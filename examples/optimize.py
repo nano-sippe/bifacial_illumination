@@ -6,7 +6,7 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import geo
+import bifacial_geo as geo
 from skopt import gp_minimize
 from skopt import plots
 optimize = 'min'
