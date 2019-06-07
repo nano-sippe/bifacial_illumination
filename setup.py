@@ -20,6 +20,6 @@ setup(name='bifacial',
       #setup_requires=['pytest-runner'],
       #test_require=['pytest'],
       install_requires=[
-          'numpy',
+          'numpy', 'scikit-optimize', 'pandas', 'seaborn', 'joblib'
       ],
       zip_safe=False)
