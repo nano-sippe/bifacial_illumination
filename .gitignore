@@ -107,3 +107,6 @@ venv.bak/
 
 .h5
 .xlsx
+
+# other stuff
+.pdf
