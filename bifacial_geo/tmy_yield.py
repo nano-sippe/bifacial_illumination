@@ -9,8 +9,11 @@ from skopt import plots
 
 class Simulator():
     def __init__(self, df, module_agg_func='min', bifacial=True,
-                 module_length = 1.65, inputDict={}):
+                 module_length = 1.65, front_eff=0.2, back_eff=0.18,
+                 inputDict={}):
         self.bifacial = bifacial
+        self.front_eff = front_eff
+        self.back_eff = back_eff
         self.module_agg_func = module_agg_func
 
         self.dni = df.loc[:,'dni_total']
@@ -72,29 +75,22 @@ class Simulator():
 
     def calculate_yield(self, distance, tilt):
         results = self.simulate(distance, tilt)
+        back_columns = results.columns.get_level_values('contribution').str.contains('back')
+        front_columns = ~back_columns
+
+        if self.bifacial:
+            results.loc[:, back_columns] *= self.back_eff
+            results.loc[:, front_columns] *= self.front_eff
+        else:
+            results = results.loc[:, front_columns]
+            results *= self.front_eff
+
         yearly_yield = results.groupby(level='module_position', axis=1).sum()\
                        .apply(self.module_agg_func, axis=1)\
                        .sum()
 
         return yearly_yield/1000 #convert to kWh
 
-    def calculate_cost(self, yearly_yield):
-        price_per_m2_module = self.module_cost_kwp * 0.2 * 100 # in cents
-        price_per_m2_land = self.price_per_m2_land * 100
-        land_cost_per_m2_module = price_per_m2_land*self.inputDict['D']/self.inputDict['L']
-        cost = (price_per_m2_module + land_cost_per_m2_module)/(yearly_yield * 0.2 * 25)
-        return cost
-
-    def optimization_wrapper(self, para_list):
-        distance, tilt = para_list
-        print(distance, tilt)
-        yearly_yield = self.calculate_yield(distance, tilt)
-        return self.calculate_cost(yearly_yield)
-
-    def optimize(self, dist_low=1.65, dist_high=15, tilt_low=1, tilt_high=50, ncalls=50):
-        self.res = gp_minimize(self.optimization_wrapper,
-                               [(dist_low, dist_high), (tilt_low, tilt_high)],
-                               n_random_starts=20, n_jobs=1, n_calls=ncalls)
 
 class CostOptimizer(Simulator):
     def __init__(self, df, module_agg_func='min', bifacial=True,
@@ -102,14 +98,16 @@ class CostOptimizer(Simulator):
                  price_per_m2_land = 5, inputDict={}):
         self.module_cost_kwp = invest_kwp
         self.price_per_m2_land = price_per_m2_land
+        self.module_length = module_length
         super().__init__(df, module_agg_func, bifacial, module_length,
-             inputDict)
+             inputDict=inputDict)
 
     def calculate_cost(self, yearly_yield):
-        price_per_m2_module = self.module_cost_kwp * 0.2 * 100 # in cents
+        price_per_m2_module = self.module_cost_kwp * self.front_eff * 100 # in cents
         price_per_m2_land = self.price_per_m2_land * 100
         land_cost_per_m2_module = price_per_m2_land*self.inputDict['D']/self.inputDict['L']
-        cost = (price_per_m2_module + land_cost_per_m2_module)/(yearly_yield * 0.2 * 25)
+        cost = (price_per_m2_module + land_cost_per_m2_module)/(yearly_yield * 25)
+        print('Cost: {}'.format(cost))
         return cost
 
     def optimization_wrapper(self, para_list):
@@ -120,26 +118,12 @@ class CostOptimizer(Simulator):
 
     def optimize(self, dist_low=1.65, dist_high=15, tilt_low=1, tilt_high=50,
                  ncalls=50):
+
+        #minimal spacing has to at least module length
+        dist_low = max(dist_low, self.module_length)
+
         self.res = gp_minimize(self.optimization_wrapper,
                                [(dist_low, dist_high), (tilt_low, tilt_high)],
-                               n_random_starts=10, n_jobs=1, n_calls=ncalls,
+                               n_random_starts=20, n_jobs=1, n_calls=ncalls,
                                random_state=1,)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

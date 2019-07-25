@@ -8,8 +8,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import bifacial_geo as geo
 import helper
+from matplotlib import ticker
+import matplotlib
 
 from joblib import Parallel, delayed, Memory
+
+plt.rcParams['font.size'] = 8.0
+plt.rcParams['text.latex.preamble'] = r'\usepackage{arev}'
+plt.rc('text', usetex=True)
 
 def _run(df, distance, tilt, bifacial=True):
     simulator = geo.Simulator(df, bifacial=bifacial)
@@ -60,21 +66,120 @@ def analyse_results_min_agg(results):
     yearly_yield['back'] = yearly_yield['total']-yearly_yield['front']
     return yearly_yield
 
-def plot_heatmaps(stats):
-    fig, (ax1, ax2, ax3) = plt.subplots(1,3, dpi=100, figsize=(14,4))
-    sns.heatmap(stats['total'].unstack('distance'), ax=ax1).set_title('total')
-    sns.heatmap(stats['front'].unstack('distance'), ax=ax2).set_title('front')
-    sns.heatmap(stats['back'].unstack('distance'), ax=ax3).set_title('back')
+def contour_helper(stats, axes, fig, pad=0.05, cmap='viridis', top=True):
+    contribs = ['total','front','back']
+    cbar_kws={"orientation": "horizontal", 'pad':pad}
+    for i, contrib in enumerate(contribs):
+        levels = np.linspace(np.floor(stats[contrib].min()/10)*10,
+                             np.ceil(stats[contrib].max()/10)*10, 20)
+        cs = axes[i].contourf(stats.index.unique('distance'),
+            stats.index.unique('tilt'), stats.unstack('distance')[contrib],
+            levels=levels, cmap=cmap)
+        if contrib != 'back':
+            line = stats[contrib].groupby(level='distance',axis=0).idxmax().apply(pd.Series).iloc[:,1]
+            axes[i].plot(line, c='black')
+        if i != 0:
+            axes[i].yaxis.label.set_visible(False)
+            axes[i].tick_params(left=False)
+        if top==True:
+            #axes[i].tick_params(bottom=False)
+            axes[i].set_title(['bifacial','front','back'][i])
+        else:
+            cbar_kws['label']= 'annual radiation yield (kWh)'
+            axes[i].set_xticklabels([])
+            axes[i].tick_params(axis="x",direction="in")
+            axes[i].xaxis.tick_top()
+
+        cb = fig.colorbar(cs, ax=axes[i], **cbar_kws)
+        #tick_locator = ticker.MaxNLocator(nbins=5)
+        cb.locator = ticker.MaxNLocator(nbins=5)
+        cb.update_ticks()
+        cb.ax.set_xticklabels(cb.ax.get_xticklabels(), rotation=-45)
+
+def plot_contourfs(stats_d, stats_s, filename=None):
+    fig, (axes_d, axes_s) = \
+        plt.subplots(2,3, dpi=100, figsize=(6.75, 4.5), sharey=True, sharex=False,
+                     gridspec_kw={'height_ratios': [1, 1]})
+    contour_helper(stats_d, axes_d, fig, pad =0.06, cmap='Reds_r', top=True)
+    contour_helper(stats_s, axes_s, fig, pad=0.06, cmap='Blues_r', top=False)
+
+    axes_d[0].set_ylabel('module tilt (deg)')
+    axes_s[0].set_ylabel('module tilt (deg)')
+    for i in range(3):
+        axes_d[i].set_xlabel('module spacing (m)')
+        axes_d[i].xaxis.set_label_position('top')
+        axes_d[i].xaxis.tick_top()
+        axes_d[i].tick_params(axis="x",direction="in")
+
+    plt.tight_layout(rect=[0, 0, 0.98, 1])
+
+    dallas = axes_d[-1].annotate(r'\textbf{Dallas}', xy=(0.965, 0.75),
+                   xycoords='figure fraction',
+                   fontsize=10)
+    dallas.set_rotation(-90)
+
+    seattle = axes_d[-1].annotate(r'\textbf{Seattle}', xy=(0.965, 0.35),
+                    xycoords='figure fraction',
+                    fontsize=10)
+    seattle.set_rotation(-90)
+    axes_d[0].annotate(r'\textbf{(a)}', xy=(0.01, 0.89),
+                   xycoords='figure fraction',
+                   fontsize=10)
+    axes_s[0].annotate(r'\textbf{(b)}', xy=(0.01, 0.47),
+                   xycoords='figure fraction',
+                   fontsize=10)
+
+    plt.savefig(filename, format='pdf', dpi=300)
+
+def plot_heatmaps(stats, filename=None):
+    fig, (ax1, ax2, ax3) = plt.subplots(1,3, dpi=100, figsize=(6.75, 3.5), sharey=True)
+    _, cb1 = sns.heatmap(stats['total'].unstack('distance'), ax=ax1,
+                cbar_kws={'label': 'annual radiation yield (kWh)',
+                          "orientation": "horizontal",
+                          'pad':0.2})
+    ax1.set_title('bifacial')
+    _, cb2 = sns.heatmap(stats['front'].unstack('distance'), ax=ax2,
+                cbar_kws={'label': 'annual radiation yield (kWh)',
+                          "orientation": "horizontal",
+                          'pad':0.2})
+    ax2.set_title('front')
+    ax2.tick_params(left=False)
+    _, cb3 = sns.heatmap(stats['back'].unstack('distance'), ax=ax3,
+                cbar_kws={'label': 'annual radiation yield (kWh)',
+                          "orientation": "horizontal",
+                          'pad':0.2})
+    ax3.set_title('back')
+    ax3.tick_params(left=False)
+
+    cb1.ax.set_xticklabels(cb1.ax.get_xticklabels(), rotation=-45)
+    cb2.ax.set_xticklabels(cb2.ax.get_xticklabels(), rotation=-45)
+    cb3.ax.set_xticklabels(cb3.ax.get_xticklabels(), rotation=-45)
+
+    ax1.set_ylabel('tilt (deg)')
+    ax1.set_xlabel('module spacing (m)')
+    ax2.yaxis.label.set_visible(False)
+    ax2.set_xlabel('module spacing (m)')
+    ax3.yaxis.label.set_visible(False)
+    ax3.set_xlabel('module spacing (m)')
+    plt.tight_layout()
+
+    if filename:
+        plt.savefig(filename, format='pdf', dpi=300)
+
     plt.show()
 
 def analyse_yield(location='dallas', grid='fine', optimize='min'):
     if grid == 'fine':
-        if location == 'dallas':
-            distance_scan = np.linspace(3,6,7)
-            tilt_scan = np.linspace(22,38,9)
-        if location == 'seattle':
-            distance_scan = np.linspace(6,12,7)
-            tilt_scan = np.linspace(26,48,12)
+        distance_scan = np.linspace(6,12,7).astype(int)
+        tilt_scan = np.linspace(22,48,14).astype(int)
+# =============================================================================
+#         if location == 'dallas':
+#             distance_scan = np.linspace(3,6,7)
+#             tilt_scan = np.linspace(22,38,9)
+#         if location == 'seattle':
+#             distance_scan = np.linspace(6,12,7)
+#             tilt_scan = np.linspace(26,48,12)
+# =============================================================================
 
     if grid=='coarse':
         distance_scan = np.linspace(3,6,4)
@@ -91,203 +196,103 @@ def analyse_yield(location='dallas', grid='fine', optimize='min'):
 
     stats = analyse_results_min_agg(scan_results)
     stats = stats/1000 #convert to kWh
-    plot_heatmaps(stats)
+    #plot_heatmaps(stats, filename='rad_yield_{}.pdf'.format(location))
+    return stats, scan_results
 
-analyse_yield(location='dallas', grid='fine', optimize='min')
+stats_d, data_d = analyse_yield(location='dallas', grid='fine', optimize='min')
+stats_s, data_s = analyse_yield(location='seattle', grid='fine', optimize='min')
+
+#plot_contourfs(stats_d, stats_s, filename='radiation_yield.pdf')
+
+def create_donut(stats, location, distance=10, tilt=34):
+    detailed_yield = stats.groupby(level='contribution', axis=1).mean()\
+                       .groupby(['distance','tilt']).sum()/1000
+
+    yearly_yield = stats.groupby(level='module_position', axis=1).sum()\
+                     .min(axis=1)\
+                     .groupby(['distance', 'tilt']).sum()\
+                     .rename('total')
+
+    detailed_yield = detailed_yield.div(detailed_yield.sum(axis=1), axis=0).multiply(yearly_yield, axis=0)
+
+    data_back = detailed_yield.loc[(distance, tilt), detailed_yield.columns.str.contains('back')]
+    data_front = detailed_yield.loc[(distance, tilt), detailed_yield.columns.str.contains('front')]
+    data_front['back'] = data_back.sum()
+
+    data_front['ground'] = data_front['front_ground_diffuse'] + data_front['front_ground_direct']
+    data_front= data_front.drop(['front_ground_diffuse', 'front_ground_direct'])
+
+    data_front = data_front.reindex(['front_sky_diffuse','back',
+                                     'front_sky_direct', 'ground'])
+
+    share_front = (data_front/(data_front.sum())*100).round(1)
+    labels_front = [r'front sky\\diffuse', 'back', r'front sky\\direct', 'front ground']
 
 
+    share_back = (data_back/(data_back.sum())*100).round(1)
+    labels_back = ['ground diffuse', 'ground direct', 'sky diffuse', 'sky direct']
 
+    front_help = data_front.copy()
+    front_help['front'] = front_help.drop('back').sum()
+    front_help = front_help.loc[['front','back']]
+
+    fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(6.75, 2.5))
 
 # =============================================================================
-# fig, (ax1, ax2, ax3) = plt.subplots(1,3, dpi=100, figsize=(14,4))
-# sns.heatmap(stats['total'].unstack('distance'), ax=ax1).set_title('total')
-# sns.heatmap(stats['front'].unstack('distance'), ax=ax2).set_title('front')
-# sns.heatmap(stats['back'].unstack('distance'), ax=ax3).set_title('back')
-#
-# asdf
-#
-# for distance in distance_scan:
-#     for tilt in tilt_scan:
-#
-#         scan_results.append(tmp)
-#
-# df_yield = pd.concat(scan_result_all, axis=1).T
-# df_yield_all = pd.concat(scan_result_all, axis=1).T
-# df_yield = pd.concat(scan_results, axis=1).T
-#
-# df_yield[['sum','front','back']] = df_yield[['sum','front','back']]/1000
-# df_yield['tilt'] = df_yield['tilt'].round().astype(int)
-#
-# df_yield['front_back_ratio'] = df_yield['back'] / df_yield['front']
-#
-# ax = df_yield.iloc[df_yield.groupby('distance')['sum'].idxmax()].set_index('distance')['tilt'].plot()#.plot(label='optimal tilt')
-# df_yield.iloc[df_yield.groupby('distance')['sum'].idxmax()].set_index('distance')['front_back_ratio'].plot(ax=ax, secondary_y=True)#, label='back contribution')
-# df_yield.iloc[df_yield.groupby('distance')['front'].idxmax()].set_index('distance')['tilt'].plot(ax=ax)
-# ax.legend([ax.get_lines()[0], ax.right_ax.get_lines()[0], ax.get_lines()[1]],
-#           ['optimal tilt total', 'back contribution', 'optimal tilt front'])
-# plt.show()
-#
-# df_yield.groupby('distance')[['sum','front']].max().plot(title='yearly yield')
-# plt.show()
-#
-# max_idx = df_yield['sum'].idxmax()
-# max_stuff = df_yield.iloc[max_idx]
-# df_yield.query('distance==3')[['sum','front','back']]
-#
-# df['ghi_total'].sum()/1000
-# df['dni_total'].sum()/1000
-#
-# sns.heatmap(df_yield.set_index(['distance','tilt'])['sum'].unstack('distance'))
-# plt.show()
-# sns.heatmap(df_yield.set_index(['distance','tilt'])['front'].unstack('distance'))
-# plt.show()
-# sns.heatmap(df_yield.set_index(['distance','tilt'])['back'].unstack('distance'))
-# plt.show()
-#
-# # =============================================================================
-# # sns.heatmap(df_yield.set_index(['distance','tilt'])['test'].unstack('distance'))
-# # plt.show()
-# # =============================================================================
-#
-# asdf
-#
-# test = df_yield_all.front_ground_direct.to_frame()
-# test[['distance', 'tilt']] = df_yield[['distance', 'tilt']]
-# sns.heatmap(test.set_index(['distance','tilt']).unstack('distance'))
-#
-# test = df_yield_all.back_ground_direct.to_frame()
-# test[['distance', 'tilt']] = df_yield[['distance', 'tilt']]
-# sns.heatmap(test.set_index(['distance','tilt']).unstack('distance'))
-#
-# test = df_yield_all.back_direct.to_frame()
-# test[['distance', 'tilt']] = df_yield[['distance', 'tilt']]
-# sns.heatmap(test.set_index(['distance','tilt']).unstack('distance'))
-#
-# test = df_yield_all.front_direct.to_frame()
-# test[['distance', 'tilt']] = df_yield[['distance', 'tilt']]
-# sns.heatmap(test.set_index(['distance','tilt']).unstack('distance'))
-#
-# test = df_yield_all.front_direct.to_frame()
-# test[['distance', 'tilt']] = df_yield[['distance', 'tilt']]
-# sns.heatmap(test.set_index(['distance','tilt']).unstack('distance'))
-#
-# asdf
-#
-# print('Back contribution: {} %'.format(
-#         result.loc[:, back_filter].sum().sum() /
-#         result.loc[:, front_filter].sum().sum()))
-#
-# ax = (result.sum()/1000).plot.bar(figsize=(8,6))
-# ax.set_ylabel('Irrandiance (kWh/m²)')
-# plt.show()
-#
-# (result.loc[:, back_filter].sum()/1000).plot.bar(figsize=(8,6))
-# ax.set_ylabel('Irrandiance (kWh/m²)')
-# plt.show()
-#
-# result['total'] = result.sum(axis=1)
-#
-# asdf
-#
-# result.groupby(result.index.dayofyear).total.sum().plot()
-#
-# df.groupby(df.index.dayofyear).ghi_total.sum().plot()
-#
-# test3 = df.loc[df.index.dayofyear==180]
-#
-# sns.heatmap(test3.groupby([test3.zenith.round(), test3.azimuth.round()]).size().unstack('azimuth'))
-#
-#
-# test = result.groupby([df.zenith.round(), df.azimuth.round()]).back_ground_direct.mean()
-#
-# import seaborn as sns
-# from matplotlib.colors import LogNorm
-# log_norm = LogNorm(vmin=0.1, vmax=test.max())
-#
-# sns.heatmap(test.unstack('azimuth').clip(0.01, test.max()))#, norm=log_norm)
-#
-# test2 = result.groupby([df.zenith.round(), df.azimuth.round()]).size()
-#
-# sns.heatmap(test2.unstack('azimuth'))
-#
-# back_groud_direct_eff = pd.Series(simulation.dict['irradiance_module_front_ground_direct_mean'],
-#                                   index=df.index)
-#
-# back_groud_direct_eff.groupby([df.zenith.round(), df.azimuth.round()]).mean().unstack('azimuth').to_excel('test2.xlsx')
-#
-# plt.figure(figsize=(8,6))
-# sns.heatmap(back_groud_direct_eff.groupby([df.zenith.round(), df.azimuth.round()]).mean().unstack('azimuth'))
-#
-#
-# asdf
-#
-# simulation.dict['irradiance_module_front_ground_direct'].shape
-# simulation.dict['irradiance_module_back_ground_direct']
-#
-# test_1 = pd.Series(self.dict['irradiance_module_front_ground_direct_mean'], index=df.index)
-# test_2 = pd.Series(self.dict['irradiance_module_back_ground_direct_mean'], index=df.index)
-# test_4
-#
-#
-# test_1 = test_1 * df.dni_total
-# test_2 = test_2 * df.dni_total
-#
-# test_1.loc['20120801'].plot()
-# test_2.loc['20120801'].plot()
-#
-# for i in range(24):
-#     zenith = test_df.loc[:,'zenith'].iloc[i]
-#     azimuth = test_df.loc[:,'azimuth'].iloc[i]
-#     dni = test_df.loc[:,'dni_total'].iloc[i]
-#     dhi = test_df.loc[:,'diffuse_total'].iloc[i]
-#     simulation.update_zenith_azimuth(zenith, azimuth)
-#
-#     result['front_ground_diffuse'].append(
-#             simulation.dict['irradiance_module_front_ground_diffuse'].mean()*dhi)
-#     result['front_ground_direct'].append(
-#             simulation.dict['irradiance_module_front_ground_direct'].mean()*dni)
-#     result['back_ground_diffuse'].append(
-#             simulation.dict['irradiance_module_back_ground_diffuse'].mean()*dhi)
-#     result['back_ground_direct'].append(
-#             simulation.dict['irradiance_module_back_ground_direct'].mean()*dni)
-#     result['front_sky_diffuse'].append(
-#             simulation.dict['irradiance_module_front_sky_diffuse'].mean()*dhi)
-#     result['back_sky_diffuse'].append(
-#             simulation.dict['irradiance_module_back_sky_diffuse'].mean()*dhi)
-#     result['front_direct'].append(
-#             simulation.dict['irradiance_module_front_sky_direct']*dni)
-#     result['back_direct'].append(
-#             simulation.dict['irradiance_module_back_sky_direct']*dni)
-#
-# result = pd.DataFrame(result)
-# result.index = test_df.index
-#
-# ax = result.plot(figsize=(8,8))
-# ax.set(ylabel='irradiance [W/m²]', xlabel='UTC time')
-# plt.show()
-# result.drop('front_direct', axis=1).plot(figsize=(8,8))
-# ax.set(ylabel='irradiance [W/m²]', xlabel='UTC time')
-# plt.show()
-#
-# front_filter = result.columns.str.contains('front')
-# back_filter = result.columns.str.contains('back')
-#
-# front_sum = result.loc[:, front_filter].sum().sum()
-# back_sum = result.loc[:, back_filter].sum().sum()
-#
-#
-# df.loc['20120801'].ghi_total.plot()
-# df.loc['20120801'].dni_total.plot()
-# df.loc['20120801'].zenith.plot()
-#
-# (df['dni_total']*np.cos(df.zenith*180/np.pi)).loc['20120801'].plot()
-#
-#
-#
-# df['month'] = df.dt.dt.month
-# df['day'] = df.dt.dt.day
-# test_plot = df.loc[df.dt.dt.hour==12].sort_values(['month','day'])
-# ghi_column_filter = test_plot.columns.str.contains('GHI')
-# test_plot.columns = test_plot
-# test_plot = test_plot.loc[:,ghi_column_filter]
+#     wedges, texts = ax1.pie(front_help, radius=0.7, wedgeprops=dict(width=0.3),
+#                                startangle=28, labels=['front',''], colors=['r','b'],
+#                                labeldistance=0.6)
 # =============================================================================
+
+    if location == 'dallas':
+        startangle1 = -104
+        line1 = matplotlib.lines.Line2D((0.355,0.68),(0.605,0.847), transform=fig.transFigure,
+                                        figure=fig, c='#999999', linewidth=1)
+        line2 = matplotlib.lines.Line2D((0.350,0.68),(0.354,0.155), transform=fig.transFigure,
+                                        figure=fig, c='#999999', linewidth=1)
+
+    if location == 'seattle':
+        startangle1 = -126
+        line1 = matplotlib.lines.Line2D((0.36,0.68),(0.605,0.825), transform=fig.transFigure,
+                                        figure=fig, c='#999999', linewidth=1)
+        line2 = matplotlib.lines.Line2D((0.355,0.68),(0.35,0.177), transform=fig.transFigure,
+                                        figure=fig, c='#999999', linewidth=1)
+
+    labels_back = [labels_back[i] + ' ({}\%)'.format(share_back.iloc[i])
+                    for i in range(len(labels_back))]
+    labels_front = [labels_front[i] + ' ({}\%)'.format(share_front.iloc[i])
+                    for i in range(len(labels_front))]
+
+    wedges, texts = ax1.pie(data_front, radius=1, wedgeprops=dict(width=0.3),
+                               startangle=startangle1, labels=labels_front, colors=['#1f77b4','#999999','#ff7f0e','#7E7468'])
+
+    wedges, texts = ax2.pie(data_back, radius=1, wedgeprops=dict(width=0.3),
+                               startangle=50, labels=labels_back, colors=['#396686','#c28249','#1f77b4','#ff7f0e'])
+    plt.tight_layout(rect=[0.02, 0, 0.98, 1])
+
+
+
+    if location == 'dallas':
+        ax1.annotate(r'\textbf{total}', xy=(0.205, 0.48),
+                       xycoords='figure fraction',
+                       fontsize=10)
+
+    if location == 'seattle':
+         ax1.annotate(r'\textbf{total}', xy=(0.2345, 0.48),
+                       xycoords='figure fraction',
+                       fontsize=10)
+
+    ax2.annotate(r'\textbf{back side}', xy=(0.6467, 0.48),
+                   xycoords='figure fraction',
+                   fontsize=10)
+
+    #line2 = matplotlib.lines.Line2D((coord1[0],coord2[0]),(coord1[1],coord2[1]),
+    #                           transform=fig.transFigure)
+    fig.lines.append(line1)
+    fig.lines.append(line2)
+    plt.show()
+
+    plt.savefig('{}_yield_contrib.pdf'.format(location), format='pdf', dpi=300)
+
+create_donut(data_d, location='dallas', distance=10, tilt=34,)
+create_donut(data_s, location='seattle', distance=10, tilt=42)
