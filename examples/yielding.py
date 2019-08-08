@@ -199,11 +199,6 @@ def analyse_yield(location='dallas', grid='fine', optimize='min'):
     #plot_heatmaps(stats, filename='rad_yield_{}.pdf'.format(location))
     return stats, scan_results
 
-stats_d, data_d = analyse_yield(location='dallas', grid='fine', optimize='min')
-stats_s, data_s = analyse_yield(location='seattle', grid='fine', optimize='min')
-
-#plot_contourfs(stats_d, stats_s, filename='radiation_yield.pdf')
-
 def create_donut(stats, location, distance=10, tilt=34):
     detailed_yield = stats.groupby(level='contribution', axis=1).mean()\
                        .groupby(['distance','tilt']).sum()/1000
@@ -298,5 +293,9 @@ def create_donut(stats, location, distance=10, tilt=34):
     plt.savefig('{}_yield_contrib.pdf'.format(location), format='pdf', dpi=300)
     plt.show()
 
-create_donut(data_d, location='dallas', distance=10, tilt=34,)
-create_donut(data_s, location='seattle', distance=10, tilt=42)
+if __name__ == '__main__':
+    stats_d, data_d = analyse_yield(location='dallas', grid='fine', optimize='min')
+    stats_s, data_s = analyse_yield(location='seattle', grid='fine', optimize='min')
+    #plot_contourfs(stats_d, stats_s, filename='radiation_yield.pdf')
+    create_donut(data_d, location='dallas', distance=10, tilt=34,)
+    create_donut(data_s, location='seattle', distance=10, tilt=42)

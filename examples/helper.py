@@ -51,3 +51,33 @@ def load_dataframe(location):
     #removing datapoints where the sun is below the horizon
     df = df.loc[df.zenith < 90]
     return df
+
+if __name__ == '__main__':
+    df_s = load_dataframe('seattle')
+    df_d = load_dataframe('dallas')
+
+    summer_s = df_s.groupby(df_s.index.month)['ghi_total'].sum().loc[4:9].sum()
+    summer_d = df_d.groupby(df_d.index.month)['ghi_total'].sum().loc[4:9].sum()
+
+    print(summer_s / df_s['ghi_total'].sum())
+    print(summer_d / df_d['ghi_total'].sum())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

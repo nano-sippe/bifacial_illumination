@@ -105,8 +105,9 @@ venv.bak/
 
 # data formats
 
-.h5
-.xlsx
+*.h5
+*.xlsx
+*.csv
 
 # other stuff
-.pdf
+*.pdf

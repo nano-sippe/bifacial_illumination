@@ -9,20 +9,58 @@ import helper
 from skopt import gp_minimize
 from skopt import plots
 from joblib import Parallel, delayed, Memory
+from glob2 import glob
 
-file_list = ['opt_stats_dallas_bi.csv',
-             'opt_stats_dallas_front.csv',
-             'opt_stats_seattle_bi.csv',
-             'opt_stats_seattle_front.csv']
+# =============================================================================
+# file_list = ['opt_stats_dallas_bi.csv',
+#              'opt_stats_dallas_front.csv',
+#              'opt_stats_seattle_bi.csv',
+#              'opt_stats_seattle_front.csv']
+# =============================================================================
 
-df_list = []
-for file in file_list:
-    df_list.append(
-            pd.read_csv(file, index_col=0).reset_index().rename(columns={'index':'cost_szenario'})
-            )
+# =============================================================================
+# file_list = glob('./stats/opt_stats_*.csv')
+#
+# df_list = []
+# for file in file_list:
+#     df_list.append(
+#             pd.read_csv(file, index_col=0)
+#             .reset_index()
+#             .rename(columns={'index':'cost_szenario'})
+#             )
+# =============================================================================
 
-df = pd.concat(df_list, keys=[file.split('.csv')[0] for file in file_list])
+df = pd.read_csv('stats/opt_stats_dallas.csv', index_col=0).reset_index(drop=True)
+
+#df = pd.concat(df_list, keys=[file.split('.csv')[0] for file in file_list])
 print(df)
+df = df.query('location=="dallas"')
+
+contour_data = df.query('type=="bi"').set_index(['cost_scenario', 'albedo']).unstack('cost_scenario')
+contour_cost = contour_data['cost']
+plt.contourf(contour_cost.columns, contour_cost.index, contour_cost)
+
+contour_bigain= df.query('type=="bi"')\
+                  .set_index(['cost_scenario', 'albedo'])\
+                  .eval('back/front')\
+                  .unstack('cost_scenario')
+
+plt.contourf(contour_bigain.columns, contour_bigain.index, contour_bigain)
+
+df['rel_land_cost'] = df.eval('land_cost/cost')*100
+df['bifacial_gain'] = df.eval('back/front')*100
+
+df.query('(albedo==0.3)&(type=="bi")')[['cost_scenario', 'cost', 'rel_land_cost', 'dist',
+        'tilt','bifacial_gain']].round(1).to_latex(index=False)
+
+df.query('(albedo==0.3)&(type=="mono")')[['cost_scenario', 'cost', 'rel_land_cost', 'dist',
+        'tilt','bifacial_gain']].round(1).to_latex(index=False, sparsify=True).strip()
+
+asdf
+df.head()
+df['albedo'] = df
+
+asdf
 
 df = df.reset_index().set_index(['level_0','cost_szenario']).drop('level_1', axis=1)
 
@@ -65,12 +103,7 @@ ax2.set_ylabel('optimal tilt (deg)')
 ax2.set_xlabel('land cost (\$/m$^2$)')
 ax2.set_title(r'\textbf{(b)}')
 fig.subplots_adjust(right=0.80, left=0.05, bottom=0.18)
-fig.legend((l1, l2, l3, l4), ('Dallas bifacial', 'Dallas front', 'Seattle bifacial', 'Seattle front'),
+fig.legend((l1, l2, l3, l4), ('Dallas bifacial', 'Dallas monofacial', 'Seattle bifacial', 'Seattle monofacial'),
            (0.81, 0.61),frameon=False)
 #plt.tight_layout()
 plt.savefig('opt_lcoe_tilt.pdf', format='pdf', dpi=300)
-
-
-
-
-

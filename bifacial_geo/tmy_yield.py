@@ -5,11 +5,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import bifacial_geo as geo
 from skopt import gp_minimize
-from skopt import plots
 
 class Simulator():
-    def __init__(self, df, module_agg_func='min', bifacial=True,
-                 module_length = 1.65, front_eff=0.2, back_eff=0.18,
+    def __init__(self, df, module_agg_func='min', bifacial=True, albedo=0.3,
+                 module_length = 1.96, front_eff=0.2, back_eff=0.18,
                  inputDict={}):
         self.bifacial = bifacial
         self.front_eff = front_eff
@@ -27,7 +26,7 @@ class Simulator():
             'DHI': 1, # diffuse horizontal irradiance
             'theta_S_deg': 30, # zenith of the Sun
             'phi_S_deg': 150, # azimuth of the Sun
-            'albedo': 0.3, # albedo of the ground
+            'albedo': albedo, # albedo of the ground
             'ground_steps': 101, #number of steps into which irradiance on the ground is evaluated in the interval [0,D]
             'module_steps': 12, # SET THIS NUMBER HIGHER FOR REAL EVALUATION! (SUGGESTION 20) number of lengths steps at which irradiance is evaluated on the module
             'angle_steps': 180 # Number at which angle discretization of ground light on module should be set
@@ -35,6 +34,7 @@ class Simulator():
         self.inputDict.update(inputDict)
         self.inputDict['theta_S_deg'] = df.zenith
         self.inputDict['phi_S_deg'] = df.azimuth
+        print('Albedo: {}'.format(albedo))
 
     def simulate(self, distance, tilt):
         self.inputDict['theta_m_deg'] = tilt
@@ -95,12 +95,13 @@ class Simulator():
 class CostOptimizer(Simulator):
     def __init__(self, df, module_agg_func='min', bifacial=True,
                  module_length = 1.65, invest_kwp = 1500,
-                 price_per_m2_land = 5, inputDict={}):
+                 price_per_m2_land = 5, inputDict={}, **kwargs):
         self.module_cost_kwp = invest_kwp
         self.price_per_m2_land = price_per_m2_land
         self.module_length = module_length
-        super().__init__(df, module_agg_func, bifacial, module_length,
-             inputDict=inputDict)
+
+        super().__init__(df, module_agg_func=module_agg_func, bifacial=bifacial, module_length=module_length,
+             inputDict=inputDict, **kwargs)
 
     def calculate_cost(self, yearly_yield):
         price_per_m2_module = self.module_cost_kwp * self.front_eff * 100 # in cents
@@ -126,4 +127,3 @@ class CostOptimizer(Simulator):
                                [(dist_low, dist_high), (tilt_low, tilt_high)],
                                n_random_starts=20, n_jobs=1, n_calls=ncalls,
                                random_state=1,)
-
