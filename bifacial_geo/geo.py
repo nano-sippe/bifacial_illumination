@@ -157,69 +157,69 @@ class ModuleIllumination:
         self.results['irradiance_module_back_sky_diffuse'] = irradiance_back
         self.results['irradiance_module_back_sky_diffuse_mean'] = irradiance_back.mean()
 
+    def calc_shadow_field(self):
+        '''
+        Calculates the start and end position of shadow of direct sunlight.
+        Depends on sun position and array  geometry.
+
+        Returns
+        -------
+        shadow_start : start position of shadow relativ to (0, 0)
+        shadow_end : end position of shadow relativ to (0, 0)
+        '''
+
+        #calculating shadow position for B0
+        shadow_B = -self.H / self.n_S[2] * self.n_S[0]
+
+        #calculating shadow for D0
+        D0 = self.L*self.e_m + np.array([0, self.H])
+        shadow_D = -D0[1] / self.n_S[2] * self.n_S[0] + D0[0]
+
+        #if shadow position of D0 is smaller then B0, positions need to be flipped.
+        flipp_mask = shadow_D < shadow_B
+        shadow_start, shadow_end = np.where(flipp_mask, shadow_D, shadow_B),\
+                   np.where(flipp_mask, shadow_B, shadow_D)
+        return shadow_start, shadow_end
+
     def calc_radiance_ground_direct(self):
-        # x-coordinates of shadow:
-        s_A = -self.H/self.n_S[2]
-        x_A = s_A * self.n_S[0]
-        s_B = (-self.H-self.L*np.sin(self.theta_m_rad))/self.n_S[2]
-        x_B = self.L*np.cos(self.theta_m_rad)+s_B * self.n_S[0]
+        '''
+        Calculates the position resolved direct irradiance on the ground.
+        '''
+        shadow_start, shadow_end = self.calc_shadow_field()
+        length_shadow = shadow_end - shadow_start
 
-        flipp_mask = x_B < x_A
-        x_A, x_B = np.where(flipp_mask, x_B, x_A),\
-                   np.where(flipp_mask, x_A, x_B)
+        # reduce such that start and end is in [0, dist] unit cell
+        shadow_start_uc = np.remainder(shadow_start, self.dist)
+        shadow_end_uc = np.remainder(shadow_end, self.dist)
 
-        length_shadow = x_B - x_A
-        #if length_shadow < self.D: # only in this case direct Sunlight will hit the ground
-        x_A_red = np.remainder(x_A, self.D) # reduce such that x_A_red is in [0,D]
-        # x_B_red = x_B - x_A + x_A_red
-        # calculate no of elements that are in the shadow
-        illum_array_temp = np.greater.outer(self.x_g_array, length_shadow).T
-        # roll the beginning of the shadowed area to x_A_red
+        #if length_shadow < self.dist: # only in this case direct Sunlight will hit the ground
+        length_shadow = shadow_end - shadow_start
+        shadow_filter = length_shadow < self.dist
+        shadow_start_uc = np.where(shadow_filter, shadow_start_uc, 0)
+        shadow_end_uc = np.where(shadow_filter, shadow_end_uc, self.dist)
 
-        for i in range(illum_array_temp.shape[0]):
-            illum_array_temp[i] = np.roll(illum_array_temp[i],
-                                       np.round(x_A_red[i]/self.D*self.ground_steps).astype(int)
-                                       )
+        #if the ground position is smaller then shadow start OR larger then
+        # shadow end it is directly illuminated if shadow start (uc) < shadow end (uc)
+        illum_array_1 = (np.greater.outer(shadow_start_uc, self.x_g_array,) | \
+                         np.less.outer(shadow_end_uc, self.x_g_array))
 
-        #illum_array_temp = illum_array_temp.T
+        #if the ground position is smaller then shadow start AND larger then
+        # shadow end it is directly illuminated if shadow start (uc) > shadow end (uc)
+        illum_array_2 = (np.greater.outer(shadow_start_uc, self.x_g_array,) & \
+                         np.less.outer(shadow_end_uc, self.x_g_array))
+
+        #choose appropriet illumination array
+        illum_array_temp = np.where((shadow_end_uc >= shadow_start_uc)[:,None],
+                                    illum_array_1,
+                                    illum_array_2)
+
+
         try:
             illum_array_temp = ((illum_array_temp*self.DNI)*np.cos(self.theta_S_rad)[:, None])
         except:
             illum_array_temp = ((illum_array_temp*self.DNI)*np.cos(self.theta_S_rad))
-        illum_array_temp[length_shadow>=self.D] = 0
 
-        irradiance_ground_direct_received = illum_array_temp
-        self.results['radiance_ground_direct_emitted'] = irradiance_ground_direct_received / np.pi * self.albedo
-
-    def calc_radiance_ground_direct2(self):
-        illum_array_temp = np.zeros(self.ground_steps)
-        # x-coordinates of shadow:
-        s_A = -self.H/self.n_S[2]
-        x_A = s_A * self.n_S[0]
-        s_B = (-self.H-self.L*self.e_m[1])/self.n_S[2]
-        x_B = self.L*self.e_m[0]+s_B * self.n_S[0]
-        if x_B < x_A: # Sun from back
-            x_A_new = x_B
-            x_B_new = x_A
-            x_A = x_A_new
-            x_B = x_B_new
-        length_shadow = x_B - x_A
-        if length_shadow < self.D: # only in this case direct Sunlight will hit the ground
-            x_A_red = fmod_pos(x_A,self.D) # reduce such that x_A_red is in [0,D]
-            x_B_red = x_B - x_A + x_A_red
-            if x_B_red < self.D:
-                for i,x in enumerate(self.x_g_array):
-                    if (x < x_A_red) or (x > x_B_red): # Instead of  (x > x_B_red) in v0.1 (x > x_A_red)
-                        illum_array_temp[i] = 1.0
-            else:
-                x_B_red = x_B_red - self.D # this was after the enumerate -> error!
-                for i,x in enumerate(self.x_g_array):
-                    if (x > x_B_red) and (x < x_A_red):
-                        #print(x)
-                        illum_array_temp[i] = 1.0
-        irradiance_ground_direct_received = illum_array_temp * self.DNI * np.cos(self.theta_S_rad)
-        self.results['radiance_ground_direct_emitted']  = irradiance_ground_direct_received / np.pi * self.albedo # division by pi converts irradiance into radiance assuming Lambertian scattering
-
+        self.results['radiance_ground_direct_emitted'] = illum_array_temp / np.pi * self.albedo
 
     # functions for radiance of the ground originating from diffuse skylight
     def a_i(self,i,x_g): # Vector between points (x_g,-H) and A_i (lower end of i'th module)
