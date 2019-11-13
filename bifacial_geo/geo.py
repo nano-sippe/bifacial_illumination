@@ -5,6 +5,7 @@ from numpy.linalg import norm
 import matplotlib.pyplot as plt
 import time
 import pandas as pd
+import warnings
 
 def section(k_1,d_1,k_2,d_2): # intersection of two lines
     section_x = (d_1-d_2)/(k_2-k_1)
@@ -67,8 +68,12 @@ class ModuleIllumination:
         self.dist= module_distance
         self.DNI = dni
         self.DHI = dhi
-        self.theta_S_rad = zenith_sun
-        self.phi_S_rad = azimuth_sun
+
+        if np.any(zenith_sun>90):
+            warnings.warn('Zenith angle larger then 90 deg was passed to simulation. Zenith angle is truncted to 90.')
+            zenith_sun[zenith_sun>90] = 90
+        self.theta_S_rad = np.deg2rad(zenith_sun)
+        self.phi_S_rad = np.deg2rad(azimuth_sun)
         self.albedo = albedo
         self.ground_steps = ground_steps
         self.module_steps = module_steps
@@ -231,7 +236,6 @@ class ModuleIllumination:
             illum_array_temp = ((illum_array_temp*self.DNI)*np.cos(self.theta_S_rad))
 
         self.results['radiance_ground_direct_emitted'] = illum_array_temp / np.pi * self.albedo
-
 
     def calc_sin_B_i(self, i, x_g):
         '''
