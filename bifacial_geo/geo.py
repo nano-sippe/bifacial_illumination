@@ -6,23 +6,10 @@ import matplotlib.pyplot as plt
 import time
 import pandas as pd
 
-def fmod_pos(x,y):
-    temp = np.fmod(x,y)
-    if temp < 0.0:
-        temp = temp + y
-    return temp
-
-def fmod_pos_array(x,y):
-    temp = np.zeros(len(x))
-    for i,xi in enumerate(x):
-        temp[i] = fmod_pos(xi,y)
-    return temp
-
 def section(k_1,d_1,k_2,d_2): # intersection of two lines
     section_x = (d_1-d_2)/(k_2-k_1)
     section_y = k_1*section_x+d_1
     return (section_x,section_y)
-
 
 class ModuleIllumination:
     def __init__(self, module_length=1.92, module_tilt=52, mount_height=0.5,
@@ -401,7 +388,6 @@ class ModuleIllumination:
                     ground_index = np.mod(index_array[j],self.ground_steps)
                     if angle_index >= self.angle_steps:
                         angle_index = self.angle_steps -1
-                        print('Somethings fishy here')
 
                     self.test += abs(cos_alpha)*abs(delta_alpha)
                     intensity_matrix[i,angle_index,ground_index] += np.pi/2.0*cos_alpha*abs(delta_alpha)
