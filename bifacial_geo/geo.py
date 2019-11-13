@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+from numpy.linalg import norm
 import matplotlib.pyplot as plt
-from scipy.interpolate import pchip_interpolate
-from scipy.integrate import quad
 import time
 import pandas as pd
 
@@ -105,6 +104,11 @@ class ModuleIllumination:
 
     # IRRADIANCE ON MODULE FROM THE SKY
     def calc_irradiance_module_sky_direct(self):
+        '''
+        Calculates the direct irradiance on the module for one or a series of
+        solar positions.
+        '''
+
         try:
             temp_irrad = np.zeros((self.n_S.shape[1], self.module_steps))
         except:
@@ -122,34 +126,36 @@ class ModuleIllumination:
         temp_front = np.where((self.cos_alpha_mS > 0)[:,None], temp_irrad, 0)
         temp_back = np.where((self.cos_alpha_mS < 0)[:,None], -temp_irrad, 0)
 
-# =============================================================================
-#         else: #sunlight hits on back
-#             l_shadow = self.L+self.D/angle_term
-#             temp_back[l_shadow < self.l_array] = self.DNI*np.abs(self.cos_alpha_mS)
-# =============================================================================
-
         self.results['irradiance_module_front_sky_direct'] = temp_front
         self.results['irradiance_module_back_sky_direct']  = temp_back
         self.results['irradiance_module_front_sky_direct_mean'] = np.mean(temp_front, axis=-1)
         self.results['irradiance_module_back_sky_direct_mean']  = np.mean(temp_back, axis=-1)
 
     def calc_irradiance_module_sky_diffuse(self):
-        alpha_2 = -np.pi/2.0
-        for fb in ['front','back']:
-            field_name = 'irradiance_module_' + fb + '_sky_diffuse'
-            temp = np.zeros(self.module_steps)
-            for i,l in enumerate(self.l_array):
-                if fb == 'front':
-                    vector_1 = (self.L-l)*self.e_m - np.array([self.D,0])
-                if fb == 'back':
-                    vector_1 = (self.L-l)*self.e_m + np.array([self.D,0])
-                alpha_1 = self.alpha(vector_1,fb)
-                temp[i] = self.DHI * (np.sin(alpha_1)-np.sin(alpha_2))/2.0
-            self.results[field_name] = temp
-            self.results[field_name + '_mean'] = np.mean(temp)
+        '''
+        Calculates the irradiance of diffuse sky on the module front.
+        The result is only depended on the geometrie of the solar panel array.
+        '''
 
-    # RADIANCE OF THE GROUND
-    # radiance of the ground originating from direct skylight
+        vectors_front = np.multiply.outer(self.L-self.l_array, self.e_m) -\
+                  np.array([self.D,0])
+
+        cos_alpha_2 = (np.dot(vectors_front, self.n_m)/\
+                      np.linalg.norm(vectors_front, axis=1))
+        sin_alpha_2 = (1-cos_alpha_2**2)**0.5
+        irradiance_front = (sin_alpha_2+1)/2.0
+
+        vectors_back = np.multiply.outer(self.L-self.l_array, self.e_m) +\
+                             np.array([self.D,0])
+        cos_epsilon_1 = np.dot(vectors_back, -self.n_m)/norm(vectors_back, axis=1)
+        sin_epsilon_2 = (1-cos_epsilon_1**2)**0.5
+        irradiance_back = (1-sin_epsilon_2)/2
+
+        self.results['irradiance_module_front_sky_diffuse'] = irradiance_front
+        self.results['irradiance_module_front_sky_diffuse_mean'] = irradiance_front.mean()
+
+        self.results['irradiance_module_back_sky_diffuse'] = irradiance_back
+        self.results['irradiance_module_back_sky_diffuse_mean'] = irradiance_back.mean()
 
     def calc_radiance_ground_direct(self):
         # x-coordinates of shadow:
