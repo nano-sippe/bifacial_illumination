@@ -326,6 +326,19 @@ class ModuleIllumination:
         self.results['radiance_ground_diffuse_emitted']  = irradiance_ground_diffuse_received / np.pi * self.albedo
 
     def module_ground_matrix_helper(self, lower_index, upper_index):
+        '''
+        helper function to calculate intensity matrix (ground view factors)
+        of visible ground from upper and lower index.
+        Parameters
+        ----------
+        lower_index: int or numpy array
+            Ground index of lowest visible point on the module. Can be array to
+            calculate intensity matrix for all points on the module at once.
+
+        uppwer_index: int or numpy array
+            Ground index of highest visible point on the module. Can be array to
+            calculate intensity matrix for all points on the module at once.
+        '''
         #initialize matrix, containing the 'ground view factors'
         intensity_matrix = np.zeros((self.module_steps, self.angle_steps, self.ground_steps))
         #broadcasting such that upper and lower index have the same length
