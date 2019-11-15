@@ -2,9 +2,6 @@
 
 import numpy as np
 from numpy.linalg import norm
-import matplotlib.pyplot as plt
-import time
-import pandas as pd
 import warnings
 
 def section(k_1,d_1,k_2,d_2): # intersection of two lines
@@ -14,7 +11,7 @@ def section(k_1,d_1,k_2,d_2): # intersection of two lines
 
 class ModuleIllumination:
     def __init__(self, module_length=1.92, module_tilt=52, mount_height=0.5,
-                 module_distance=7.1, dni=1, dhi=1, zenith_sun=30, azimuth_sun=150,
+                 module_spacing=7.1, dni=1, dhi=1, zenith_sun=30, azimuth_sun=150,
                  albedo=0.3, ground_steps=101, module_steps=12, angle_steps=180):
         '''
         Simulation of illumination for a bifacial solar panel in a periodic
@@ -63,9 +60,9 @@ class ModuleIllumination:
             Angular resolution of the ground radiance
         '''
         self.L = module_length
-        self.theta_m_rad = module_tilt
+        self.theta_m_rad = np.deg2rad(module_tilt)
         self.H = mount_height
-        self.dist= module_distance
+        self.dist= module_spacing
         self.DNI = dni
         self.DHI = dhi
 
@@ -280,8 +277,6 @@ class ModuleIllumination:
         y = self.H +D_0[1]
         return x/norm([x, y])
 
-    # radiance of the ground originating from diffuse skylight
-    # this method leads to the same results as the one developped earlier (v0.1) but is much faster.
     def calc_radiance_ground_diffuse(self):
         '''
         Calculates the position resolved diffuse irradiance on the ground.
@@ -330,88 +325,102 @@ class ModuleIllumination:
         # division by pi converts irradiance into radiance assuming Lambertian scattering
         self.results['radiance_ground_diffuse_emitted']  = irradiance_ground_diffuse_received / np.pi * self.albedo
 
+    def module_ground_matrix_helper(self, lower_index, upper_index):
+        #initialize matrix, containing the 'ground view factors'
+        intensity_matrix = np.zeros((self.module_steps, self.angle_steps, self.ground_steps))
+        #broadcasting such that upper and lower index have the same length
+        indices = np.stack(np.broadcast(lower_index, upper_index))
+        for i,l in enumerate(self.l_array):
+            lower_index, upper_index = indices[i]
+            index_array = np.arange(lower_index, upper_index+1)
 
-    # IRRADIANCE ON MODULE FROM THE GROUND
-    # some functions
-    def alpha(self,vector,front_back): #calculate angle between n_m and vector for front side
-        if front_back == 'front':
-            cos_alpha = np.dot(vector, self.n_m)/np.linalg.norm(vector)
-        elif front_back == 'back':
-            cos_alpha = np.dot(vector,-self.n_m)/np.linalg.norm(vector)
-        else:
-            print('ERROR! Value neither front nor back')
-            cos_alpha = 1./0.
-        sign_alpha = np.sign(self.n_m[0]*vector[1]-self.n_m[1]*vector[0])#sign such that vectors pointing below n_m positive
-        return sign_alpha*np.arccos(cos_alpha)
+            #calculate the distance for every visible element on the ground
+            ground_dist_array = self.x_g_distance*index_array
+
+            #calculates the angle w.r.t. to the module for every visible element on the ground
+            x = ground_dist_array-(l*self.e_m)[0]
+            y = -self.H-(l*self.e_m)[1]
+            vector= np.stack(np.broadcast(x, y))
+            alpha_array = np.arcsin(np.dot(vector, self.e_m)/norm(vector, axis=1))
+            alpha_array = np.abs(alpha_array)
+
+            #calculates the difference between a element and the next element for integration
+            sin_alpha = np.sin(alpha_array)
+            delta_sin_alpha = np.abs(sin_alpha-np.roll(sin_alpha, 1))
+            delta_sin_alpha[0] = delta_sin_alpha[1]
+
+            #convert 'radiance' to 'irradiance'
+            irradiance_factor = delta_sin_alpha*np.pi/2.0
+
+            #filling intensity matrix
+            angle_index = np.floor(alpha_array*self.angle_steps/np.pi+self.angle_steps/2.0).astype(int)-1
+            ground_index = np.remainder(index_array, self.ground_steps)
+            for j in range(len(alpha_array)):
+                intensity_matrix[i,angle_index[j], ground_index[j]] += irradiance_factor[j]#np.pi/2.0*cos_alpha[j]*abs(delta_alpha[j])
+
+        return intensity_matrix
 
 
-    #calculate matrix that determines distribution of light from ground on the module
     def calc_module_ground_matrix(self):
-        for fb in ['front','back']:
-            intensity_matrix = np.zeros((self.module_steps, self.angle_steps, self.ground_steps))
-            field_name = 'module_' + fb + '_ground_matrix'
-            t = time.process_time()
-            for i,l in enumerate(self.l_array): # remove 0th entry as otherwise the ray to calculate alpha1 would be parallel to x-axis!!!
-                vector_2 = -l*self.e_m
-                # position of the line starting at point on module via lowest pt. of module
-                x_g_2 = l*self.e_m[0] - (l*self.e_m[1]+self.H)/vector_2[1]*vector_2[0]
-                if fb == 'front':
-                    vector_1 = np.array([-self.dist,0])-l*self.e_m
-                if fb == 'back':
-                    vector_1 = np.array([ self.dist,0])-l*self.e_m
-                x_g_1 = l*self.e_m[0] - (l*self.e_m[1]+self.H)/vector_1[1]*vector_1[0]
-                if fb == 'front':
-                    lower_index = int(round(x_g_1/self.x_g_distance))
-                    upper_index = int(round(x_g_2/self.x_g_distance))
-                if fb == 'back':
-                    lower_index = int(round(x_g_2/self.x_g_distance))
-                    upper_index = int(round(x_g_1/self.x_g_distance))
-                index_array = np.arange(lower_index, upper_index+1)
-                x_g_array_full = self.x_g_distance*index_array
-                alpha_array = np.zeros(len(index_array))
-                #addend_array = np.zeros(len(index_array))
-                for j,x_g in enumerate(x_g_array_full):
-                    vector = np.array([x_g,-self.H])-l*self.e_m
-                    alpha_array[j] = self.alpha(vector,fb)
-                self.test = 0
-                self.test2 = np.sin(alpha_array[-1]) - np.sin(alpha_array[0])
-                self.upper = alpha_array[-1]
-                self.lower = alpha_array[0]
-                for j,x_g in enumerate(x_g_array_full):
-                    if j == 0:
-                        delta_alpha = 0.5*(alpha_array[1]-alpha_array[0])
-                    elif j == len(index_array)-1:
-                        delta_alpha = 0.5*(alpha_array[j]-alpha_array[j-1])
-                    else:
-                        delta_alpha = 0.5*(alpha_array[j+1]-alpha_array[j-1])
-                    #print(np.mod(index_array[j],self.ground_steps))
-                    cos_alpha = abs(np.cos(alpha_array[j]))
-                    angle_index = np.int(np.floor(alpha_array[j]*self.angle_steps/np.pi+self.angle_steps/2.0))
-                    if angle_index == self.angle_steps:
-                        angle_index = angle_index-1
-                    ground_index = np.mod(index_array[j],self.ground_steps)
-                    if angle_index >= self.angle_steps:
-                        angle_index = self.angle_steps -1
+        '''
+        Calculates matrix that determines distribution of light from ground on the module
+        '''
+        vec_pos_module = np.multiply.outer(self.l_array, self.e_m)
 
-                    self.test += abs(cos_alpha)*abs(delta_alpha)
-                    intensity_matrix[i,angle_index,ground_index] += np.pi/2.0*cos_alpha*abs(delta_alpha)
-            self.results[field_name] = intensity_matrix
-            self.results[field_name + '_time'] = time.process_time()-t
+        #intersection of module vector e_m and ground (X prime in manuscript)
+        low_view = self.H/self.e_m[1]*(-self.e_m[0])
 
-    #irradiance on the module from the ground originating from direct skylight
+
+        #vector from module position to B-1 (lowest point of next module)
+        vec_next_front = np.array([-self.dist,0])-vec_pos_module
+        #vector from module position to B1 (lowest point of module behind)
+        vec_next_back = np.array([self.dist,0])-vec_pos_module
+
+        #calculates the highest distance on the ground that is visible to
+        #a position on the module
+        high_view_front = vec_pos_module[:,0] + (vec_pos_module[:,1] + self.H)/\
+                               (-vec_next_front[:,1])*vec_next_front[:,0]
+        high_view_back = vec_pos_module[:,0] + (vec_pos_module[:,1] + self.H)/\
+                               (-vec_next_back[:,1])*vec_next_back[:,0]
+
+        #calculates the upper and lower index on ground for the visible area
+        lower_index_front = np.round(high_view_front/self.x_g_distance).astype(int)
+        upper_index_front = np.round(low_view/self.x_g_distance).astype(int)
+
+        lower_index_back = np.round(low_view/self.x_g_distance).astype(int)
+        upper_index_back = np.round(high_view_back/self.x_g_distance).astype(int)
+
+        intensity_matrix_front = self.module_ground_matrix_helper(lower_index_front, upper_index_front)
+        intensity_matrix_back = self.module_ground_matrix_helper(lower_index_back, upper_index_back)
+
+        self.results['module_front_ground_matrix'] = intensity_matrix_front
+        self.results['module_back_ground_matrix'] = intensity_matrix_back
+
     def calc_irradiance_module_ground_direct(self):
+        '''
+        irradiance on the module from the ground originating from direct skylight
+        '''
         for fb in ['front','back']:
             field_name = 'irradiance_module_' + fb + '_ground_direct'
             matrix = self.results['module_' + fb + '_ground_matrix']
-            temp = np.sum(matrix, axis = 1)
-            self.results[field_name] = self.results['radiance_ground_direct_emitted']@temp.T
-            self.results[field_name + '_mean'] = np.mean(self.results[field_name], axis=-1)
+            #sum over all angles
+            ground_view_factor = np.sum(matrix, axis = 1)
+            #multiply ground radiance with correspoding ground radiance
+            #and sum over ground index
+            self.results[field_name] = self.results['radiance_ground_direct_emitted']@ground_view_factor.T
+            self.results[field_name + '_mean'] = self.results[field_name].mean()
 
-    #irradiance on the module from the ground originating from diffuse skylight
     def calc_irradiance_module_ground_diffuse(self):
+        '''
+        irradiance on the module from the ground originating from diffuse skylight
+        '''
         for fb in ['front','back']:
             field_name = 'irradiance_module_' + fb + '_ground_diffuse'
             matrix = self.results['module_' + fb + '_ground_matrix']
-            temp = np.sum(matrix, axis = 1)
-            self.results[field_name] = (temp*self.results['radiance_ground_diffuse_emitted']).sum(axis=1)
-            self.results[field_name + '_mean'] = np.mean(self.results[field_name])
+            #sum over all angles
+            ground_view_factor = np.sum(matrix, axis = 1)
+            #multiply ground radiance with correspoding ground radiance
+            #and sum over ground index
+            self.results[field_name] = (ground_view_factor*\
+                        self.results['radiance_ground_diffuse_emitted']).sum(axis=1)
+            self.results[field_name + '_mean'] = self.results[field_name].mean()
