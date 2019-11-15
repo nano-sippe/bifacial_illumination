@@ -20,6 +20,6 @@ setup(name='bifacial_illumination',
       #setup_requires=['pytest-runner'],
       #test_require=['pytest'],
       install_requires=[
-          'numpy'
+          'numpy', 'pysolar'
       ],
       zip_safe=False)
