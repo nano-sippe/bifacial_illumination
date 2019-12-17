@@ -8,11 +8,14 @@ from skopt import gp_minimize
 class YieldSimulator():
     def __init__(self, illumination, module_agg_func='min', bifacial=True, albedo=0.3,
                  module_length = 1.96, front_eff=0.2, back_eff=0.18,
-                 module_height=0.5, kw_parameter={}):
+                 module_height=0.5, kw_parameter={}, tmy_data=True):
         self.bifacial = bifacial
         self.front_eff = front_eff
         self.back_eff = back_eff
         self.module_agg_func = module_agg_func
+
+        #whether the underlying data is representing a tmy
+        self.tmy_data = tmy_data
 
         #whether the perez model should be used to determine the components of diffuse irradiance
         #self.perez_diffuse = perez_diffuse
@@ -62,7 +65,7 @@ class YieldSimulator():
                                     names=level_names)
 
         results = pd.DataFrame(np.concatenate([diffuse_ts, direct_ts], axis=1),
-                                  columns = multi_index)
+                                  columns = multi_index, index = self.dni.index)
         return results
 
     def calculate_yield(self, spacing, tilt):
@@ -77,15 +80,24 @@ class YieldSimulator():
             results = results.loc[:, front_columns]
             results *= self.front_eff
 
-        yearly_yield = results.groupby(level='module_position', axis=1).sum()\
-                       .apply(self.module_agg_func, axis=1)\
-                       .sum()
+        if self.tmy_data:
+            yearly_yield = results.groupby(level='module_position', axis=1).sum()\
+                                   .apply(self.module_agg_func, axis=1)\
+                                   .resample('1H').mean()\
+                                   .sum()
+
+        else:
+            total_yield = results.groupby(level='module_position', axis=1).sum()\
+                                 .apply(self.module_agg_func, axis=1)
+            total_yield = total_yield.resample('1H').mean().resample('1D').sum()
+            number_of_days = total_yield.index.normalize().nunique()
+            yearly_yield = total_yield.sum()/number_of_days*365
 
         return yearly_yield/1000 #convert to kWh
 
 # =============================================================================
 # class CostOptimizer(YieldSimulator):
-#     def __init__(self, df, module_agg_func='min', bifacial=True,
+#     def __init__(self, illumination, module_agg_func='min', bifacial=True,
 #                  module_length = 1.65, invest_kwp = 1500,
 #                  price_per_m2_land = 5, inputDict={}, **kwargs):
 #         self.module_cost_kwp = invest_kwp
