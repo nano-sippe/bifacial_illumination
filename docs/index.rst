@@ -50,7 +50,7 @@ You can define the parameters of the PV field and the position of the sun to eva
     :maxdepth: 2
     :caption: Contents:
 
-.. automodule:: bifacial_illumination
+.. automodule:: geo
 
 .. autoclass:: ModuleIllumination
     :members:
