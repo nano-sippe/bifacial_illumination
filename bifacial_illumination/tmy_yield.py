@@ -95,40 +95,41 @@ class YieldSimulator():
 
         return yearly_yield/1000 #convert to kWh
 
-# =============================================================================
-# class CostOptimizer(YieldSimulator):
-#     def __init__(self, illumination, module_agg_func='min', bifacial=True,
-#                  module_length = 1.65, invest_kwp = 1500,
-#                  price_per_m2_land = 5, inputDict={}, **kwargs):
-#         self.module_cost_kwp = invest_kwp
-#         self.price_per_m2_land = price_per_m2_land
-#         self.module_length = module_length
-#
-#         super().__init__(df, module_agg_func=module_agg_func, bifacial=bifacial, module_length=module_length,
-#              inputDict=inputDict, **kwargs)
-#
-#     def calculate_cost(self, yearly_yield):
-#         price_per_m2_module = self.module_cost_kwp * self.front_eff * 100 # in cents
-#         price_per_m2_land = self.price_per_m2_land * 100
-#         land_cost_per_m2_module = price_per_m2_land*self.inputDict['D']/self.inputDict['L']
-#         cost = (price_per_m2_module + land_cost_per_m2_module)/(yearly_yield * 25)
-#         #print('Cost: {}'.format(cost))
-#         return cost
-#
-#     def calc_lcoe(self, para_list):
-#         distance, tilt = para_list
-#         #print(distance, tilt)
-#         yearly_yield = self.calculate_yield(distance, tilt)
-#         return self.calculate_cost(yearly_yield)
-#
-#     def optimize(self, dist_low=1.65, dist_high=14, tilt_low=1., tilt_high=50.,
-#                  ncalls=60):
-#
-#         #minimal spacing has to at least module length
-#         dist_low = max(dist_low, self.module_length)
-#
-#         self.res = gp_minimize(self.calc_lcoe,
-#                                [(dist_low, dist_high), (tilt_low, tilt_high)],
-#                                n_random_starts=20, n_jobs=1, n_calls=ncalls,
-#                                random_state=1)
-# =============================================================================
+class CostOptimizer(YieldSimulator):
+    def __init__(self, illumination, module_agg_func='min', bifacial=True,
+                 module_length = 1.96, invest_kwp = 1500, tmy_data=True,
+                 price_per_m2_land = 5, **kwargs):
+        self.module_cost_kwp = invest_kwp
+        self.price_per_m2_land = price_per_m2_land
+        self.module_length = module_length
+
+        super().__init__(illumination, module_agg_func=module_agg_func,
+             bifacial=bifacial, module_length=module_length,
+             tmy_data=tmy_data, **kwargs)
+
+    def calculate_cost(self, yearly_yield):
+        price_per_m2_module = self.module_cost_kwp * self.front_eff * 100 # in cents
+        price_per_m2_land = self.price_per_m2_land * 100
+        land_cost_per_m2_module = price_per_m2_land*\
+                                 self.input_parameter['module_spacing']/\
+                                 self.input_parameter['module_length']
+        cost = (price_per_m2_module + land_cost_per_m2_module)/(yearly_yield * 25)
+        #print('Cost: {}'.format(cost))
+        return cost
+
+    def calc_lcoe(self, para_list):
+        spacing, tilt = para_list
+        print(spacing, tilt)
+        yearly_yield = self.calculate_yield(spacing, tilt)
+        return self.calculate_cost(yearly_yield)
+
+    def optimize(self, spacing_min=1.65, spacing_max=14, tilt_min=1., tilt_max=50.,
+                 ncalls=60):
+
+        #minimal spacing has to at least module length
+        spacing_min = max(spacing_min, self.module_length)
+
+        self.res = gp_minimize(self.calc_lcoe,
+                               [(spacing_min, spacing_max), (tilt_min, tilt_max)],
+                               n_random_starts=20, n_jobs=1, n_calls=ncalls,
+                               random_state=1)
