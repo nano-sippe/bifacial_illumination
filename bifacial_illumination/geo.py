@@ -96,6 +96,15 @@ class ModuleIllumination:
         self.calc_module_ground_matrix()
         self.calc_irradiance_module_ground_direct()
         self.calc_irradiance_module_ground_diffuse()
+        self.results['irradiance_module_front'] = self.results['irradiance_module_front_sky_direct'] + \
+                                                  self.results['irradiance_module_front_sky_diffuse'] +\
+                                                  self.results['irradiance_module_front_ground_direct'] +\
+                                                  self.results['irradiance_module_front_ground_diffuse']
+
+        self.results['irradiance_module_back'] = self.results['irradiance_module_back_sky_direct'] + \
+                                                 self.results['irradiance_module_back_sky_diffuse'] +\
+                                                 self.results['irradiance_module_back_ground_direct'] +\
+                                                 self.results['irradiance_module_back_ground_diffuse']
 
 
     def module(self): # some functions and values for the PV module
