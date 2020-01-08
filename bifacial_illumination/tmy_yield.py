@@ -3,12 +3,14 @@
 import numpy as np
 import pandas as pd
 import geo
-from skopt import gp_minimize
 
 class YieldSimulator():
     def __init__(self, illumination, module_agg_func='min', bifacial=True, albedo=0.3,
                  module_length = 1.96, front_eff=0.2, back_eff=0.18,
                  module_height=0.5, kw_parameter={}, tmy_data=True):
+        '''
+        Stil needs docstring
+        '''
         self.bifacial = bifacial
         self.front_eff = front_eff
         self.back_eff = back_eff
@@ -31,6 +33,9 @@ class YieldSimulator():
         self.input_parameter['azimuth_sun'] = illumination.df.azimuth
 
     def simulate(self, spacing, tilt):
+        '''
+        Stil needs docstring
+        '''
         self.input_parameter['module_tilt'] = tilt
         self.input_parameter['module_spacing'] = spacing
         simulation = geo.ModuleIllumination(**self.input_parameter)
@@ -69,6 +74,9 @@ class YieldSimulator():
         return results
 
     def calculate_yield(self, spacing, tilt):
+        '''
+        Stil needs docstring
+        '''
         results = self.simulate(spacing, tilt)
         back_columns = results.columns.get_level_values('contribution').str.contains('back')
         front_columns = ~back_columns
@@ -99,6 +107,13 @@ class CostOptimizer(YieldSimulator):
     def __init__(self, illumination, module_agg_func='min', bifacial=True,
                  module_length = 1.96, invest_kwp = 1500, tmy_data=True,
                  price_per_m2_land = 5, **kwargs):
+        '''
+        Stil needs docstring
+        '''
+
+        from skopt import gp_minimize
+        self.optimizer = gp_minimize
+
         self.module_cost_kwp = invest_kwp
         self.price_per_m2_land = price_per_m2_land
         self.module_length = module_length
@@ -108,6 +123,9 @@ class CostOptimizer(YieldSimulator):
              tmy_data=tmy_data, **kwargs)
 
     def calculate_cost(self, yearly_yield):
+        '''
+        Stil needs docstring
+        '''
         price_per_m2_module = self.module_cost_kwp * self.front_eff * 100 # in cents
         price_per_m2_land = self.price_per_m2_land * 100
         land_cost_per_m2_module = price_per_m2_land*\
@@ -118,6 +136,9 @@ class CostOptimizer(YieldSimulator):
         return cost
 
     def calc_lcoe(self, para_list):
+        '''
+        Stil needs docstring
+        '''
         spacing, tilt = para_list
         print(spacing, tilt)
         yearly_yield = self.calculate_yield(spacing, tilt)
@@ -125,11 +146,14 @@ class CostOptimizer(YieldSimulator):
 
     def optimize(self, spacing_min=1.65, spacing_max=14, tilt_min=1., tilt_max=50.,
                  ncalls=60):
+        '''
+        Stil needs docstring
+        '''
 
         #minimal spacing has to at least module length
         spacing_min = max(spacing_min, self.module_length)
 
-        self.res = gp_minimize(self.calc_lcoe,
+        self.res = self.optimizer(self.calc_lcoe,
                                [(spacing_min, spacing_max), (tilt_min, tilt_max)],
                                n_random_starts=20, n_jobs=1, n_calls=ncalls,
                                random_state=1)
