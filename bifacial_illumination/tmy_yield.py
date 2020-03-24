@@ -8,7 +8,7 @@ from bifacial_illumination import geo
 class YieldSimulator:
     def __init__(
         self,
-        illumination,
+        illumination_df,
         module_agg_func="min",
         bifacial=True,
         albedo=0.3,
@@ -27,21 +27,25 @@ class YieldSimulator:
         self.back_eff = back_eff
         self.module_agg_func = module_agg_func
 
+        self.simulation = None
+
         # whether the underlying data is representing a tmy
         self.tmy_data = tmy_data
 
         # whether the perez model should be used to determine the components of diffuse irradiance
         # self.perez_diffuse = perez_diffuse
 
-        self.dni = illumination.df.loc[:, "DNI"]
-        self.dhi = illumination.df.loc[:, "DHI"]
+        self.dni = illumination_df.loc[:, "DNI"]
+        self.dhi = illumination_df.loc[:, "DHI"]
 
         self.input_parameter = dict(
             module_length=module_length, mount_height=module_height, albedo=albedo
         )
         self.input_parameter.update(kw_parameter)
-        self.input_parameter["zenith_sun"] = illumination.df.zenith
-        self.input_parameter["azimuth_sun"] = illumination.df.azimuth
+        self.input_parameter["zenith_sun"] = illumination_df.zenith
+        self.input_parameter["azimuth_sun"] = illumination_df.azimuth
+        self.input_parameter['dni'] = self.dni
+        self.input_parameter['dhi'] = self.dhi.sum()
 
     def simulate(self, spacing, tilt):
         """
@@ -49,28 +53,29 @@ class YieldSimulator:
         """
         self.input_parameter["module_tilt"] = tilt
         self.input_parameter["module_spacing"] = spacing
-        simulation = geo.ModuleIllumination(**self.input_parameter)
+
+        self.simulation = geo.ModuleIllumination(**self.input_parameter)
 
         diffuse = np.concatenate(
             [
-                simulation.results["irradiance_module_front_ground_diffuse"],
-                simulation.results["irradiance_module_front_sky_diffuse"],
-                simulation.results["irradiance_module_back_sky_diffuse"],
-                simulation.results["irradiance_module_back_ground_diffuse"],
+                self.simulation.results["irradiance_module_front_ground_diffuse"],
+                self.simulation.results["irradiance_module_front_sky_diffuse"],
+                self.simulation.results["irradiance_module_back_sky_diffuse"],
+                self.simulation.results["irradiance_module_back_ground_diffuse"],
             ]
         )
         direct = np.concatenate(
             [
-                simulation.results["irradiance_module_front_ground_direct"],
-                simulation.results["irradiance_module_front_sky_direct"],
-                simulation.results["irradiance_module_back_sky_direct"],
-                simulation.results["irradiance_module_back_ground_direct"],
+                self.simulation.results["irradiance_module_front_ground_direct"],
+                self.simulation.results["irradiance_module_front_sky_direct"],
+                self.simulation.results["irradiance_module_back_sky_direct"],
+                self.simulation.results["irradiance_module_back_ground_direct"],
             ],
             axis=1,
         )
 
-        diffuse_ts = np.outer(self.dhi, diffuse)
-        direct_ts = self.dni[:, None] * direct
+        diffuse_ts = np.outer(self.dhi, diffuse/self.dhi.sum())
+        direct_ts = direct#self.dni[:, None] * direct
 
         column_names = ["front_ground", "front_sky", "back_sky", "back_ground"]
         prefixes = ["_diffuse", "_direct"]
@@ -78,7 +83,7 @@ class YieldSimulator:
 
         level_names = ["contribution", "module_position"]
         multi_index = pd.MultiIndex.from_product(
-            [column_names, range(simulation.module_steps)], names=level_names
+            [column_names, range(self.simulation.module_steps)], names=level_names
         )
 
         results = pd.DataFrame(

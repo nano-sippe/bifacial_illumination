@@ -14,6 +14,11 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../bifacial_illumination'))
 
+import pandas as pd
+import numpy as np
+import bifacial_illumination as bi
+from bifacial_illumination import ModuleIllumination
+
 master_doc = 'index'
 
 # -- Project information -----------------------------------------------------
@@ -33,6 +38,9 @@ release = '0.0.1'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
+    'IPython.sphinxext.ipython_directive',
+    'IPython.sphinxext.ipython_console_highlighting'
 ]
 
 # Add any paths that contain templates here, relative to this directory.

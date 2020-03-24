@@ -3,11 +3,21 @@
 import numpy as np
 from numpy.linalg import norm
 import warnings
+import pandas as pd
 
 def section(k_1,d_1,k_2,d_2): # intersection of two lines
     section_x = (d_1-d_2)/(k_2-k_1)
     section_y = k_1*section_x+d_1
     return (section_x,section_y)
+
+def projection(a, b):
+    '''calculates the projection between two lines'''
+    try:
+        projection = np.cross(b, np.cross(a, b)/(norm(b, axis=-1)[:,None]))/norm(b, axis=-1)[:,None]
+    except:
+        projection = np.cross(b, np.cross(a, b)/norm(b))/norm(b)
+
+    return projection
 
 class ModuleIllumination:
     def __init__(self, module_length=1.92, module_tilt=52, mount_height=0.5,
@@ -17,7 +27,7 @@ class ModuleIllumination:
         Simulation of illumination for a bifacial solar panel in a periodic
         south facing array.
 
-        Accepts array inputs for sun position for fast tiem series evaluation.
+        Accepts array inputs for sun position for fast time series evaluation.
 
         Parameters
         ----------
@@ -59,6 +69,10 @@ class ModuleIllumination:
         angle_steps : int
             Angular resolution of the ground radiance
         '''
+
+        # test variable for development
+        self.tmp = {}
+
         self.L = module_length
         self.theta_m_rad = np.deg2rad(module_tilt)
         self.H = mount_height
@@ -115,6 +129,7 @@ class ModuleIllumination:
         self.e_m = np.array([np.cos(self.theta_m_rad),np.sin(self.theta_m_rad)]) # unit vector along the module
         self.n_m = np.array([-np.sin(self.theta_m_rad),np.cos(self.theta_m_rad)]) # normal to the module
         self.n_m_3D = np.array([self.n_m[0],0,self.n_m[1]]) # normal to the module
+        self.e_m_3D = np.array([self.e_m[0],0,self.e_m[1]])
 
     # IRRADIANCE ON MODULE FROM THE SKY
     def calc_irradiance_module_sky_direct(self):
@@ -128,15 +143,31 @@ class ModuleIllumination:
         except:
             temp_irrad = np.zeros(self.module_steps)
 
-        self.cos_alpha_mS = np.dot(self.n_S.T, self.n_m_3D) # cosine of angle between Sun and module normal
-        angle_term = np.cos(self.theta_m_rad)-np.sin(self.theta_m_rad)*self.n_S[0]/self.n_S[2] # needed for calculating shadow on module
+        # cosine of angle between Sun and module normal
+        self.cos_alpha_mS = np.dot(self.n_S.T, self.n_m_3D)
+        # needed for calculating shadow on module
+        angle_term = np.cos(self.theta_m_rad)-np.sin(self.theta_m_rad)*self.n_S[0]/self.n_S[2]
+
+        proj_module_plane = projection(self.n_S.T, self.n_m_3D)
+
+        #proj_module_plane = projection(self.n_S.T[13952:13983], self.n_m_3D)
+        try:
+            proj_module_plane = proj_module_plane / norm(proj_module_plane, axis=1)[:,None]
+        except:
+            proj_module_plane = proj_module_plane / norm(proj_module_plane)
+
+        phi = np.arccos(np.dot(proj_module_plane, self.e_m_3D))
+        phi = np.where(self.n_S[1]>0, phi, -phi)
+
+        self.tmp['phi'] = phi
+        self.tmp['theta'] = np.arccos(self.cos_alpha_mS)
 
         l_shadow = np.where(self.cos_alpha_mS > 0,
                             self.L-self.dist/angle_term,
                             self.L+self.dist/angle_term)
 
         try:
-            temp_irrad[:] = self.DNI*self.cos_alpha_mS[:,None]
+            temp_irrad[:] = (self.DNI*self.cos_alpha_mS)[:,None]
             temp_irrad[np.greater.outer(l_shadow, self.l_array)] = 0
             temp_front = np.where((self.cos_alpha_mS > 0)[:,None], temp_irrad, 0)
             temp_back = np.where((self.cos_alpha_mS < 0)[:,None], -temp_irrad, 0)
@@ -162,12 +193,26 @@ class ModuleIllumination:
 
         cos_alpha_2 = (np.dot(vectors_front, self.n_m)/\
                       np.linalg.norm(vectors_front, axis=1))
+
+        self.tmp['alpha_2_front'] = np.arccos(cos_alpha_2)
+        spacing_alpha = np.linspace(-np.pi/2, np.pi/2, 1200)
+        dist_alpha = np.cos(spacing_alpha)
+
+        selector = np.greater.outer(spacing_alpha, self.tmp['alpha_2_front']).T
+        dist_alpha = np.tile(dist_alpha, (self.module_steps, 1))
+        dist_alpha[selector] = 0
+
+        np.trapz(dist_alpha, np.tile(spacing_alpha, (self.module_steps, 1)), axis=1)/2
+
         sin_alpha_2 = (1-cos_alpha_2**2)**0.5
         irradiance_front = (sin_alpha_2+1)/2.0*self.DHI
 
         vectors_back = np.multiply.outer(self.L-self.l_array, self.e_m) +\
                              np.array([self.dist,0])
         cos_epsilon_1 = np.dot(vectors_back, -self.n_m)/norm(vectors_back, axis=1)
+
+        self.tmp['epsilon_1_back'] = np.pi/2 - np.arccos(cos_epsilon_1)
+
         sin_epsilon_2 = (1-cos_epsilon_1**2)**0.5
         irradiance_back = (1-sin_epsilon_2)/2*self.DHI
 
@@ -234,7 +279,7 @@ class ModuleIllumination:
             illum_array_temp = np.where((shadow_end_uc >= shadow_start_uc)[:,None],
                                     illum_array_1,
                                     illum_array_2)
-            illum_array_temp = ((illum_array_temp*self.DNI)*np.cos(self.theta_S_rad)[:, None])
+            illum_array_temp = ((illum_array_temp*self.DNI[:,None])*np.cos(self.theta_S_rad)[:, None])
         except:
             illum_array_temp = np.where((shadow_end_uc >= shadow_start_uc),
                                     illum_array_1,
@@ -364,7 +409,7 @@ class ModuleIllumination:
             y = -self.H-(l*self.e_m)[1]
             vector= np.stack(np.broadcast(x, y))
             alpha_array = np.arcsin(np.dot(vector, self.e_m)/norm(vector, axis=1))
-            alpha_array = np.abs(alpha_array)
+            #alpha_array = np.abs(alpha_array)
 
             #calculates the difference between a element and the next element for integration
             sin_alpha = np.sin(alpha_array)
@@ -380,7 +425,23 @@ class ModuleIllumination:
             for j in range(len(alpha_array)):
                 intensity_matrix[i,angle_index[j], ground_index[j]] += irradiance_factor[j]#np.pi/2.0*cos_alpha[j]*abs(delta_alpha[j])
 
-        return intensity_matrix
+        #tmp stuff
+        if True:
+# =============================================================================
+#             matrix = simulator.simulation.results['module_back_ground_matrix']
+#
+#             mindex = pd.MultiIndex.from_product([range(self.module_steps)
+#             , range(self.angle_steps), range(self.ground_steps)],
+#                                        names=['module_position', 'alpha', 'ground_position'])
+#
+#             df = pd.Series(matrix.flatten(), index = mindex)
+#             sns.heatmap(df.loc[0].unstack('alpha'))
+# =============================================================================
+            beta_distribution = np.sin(np.linspace(0,np.pi,20))**2 /\
+                (np.sin(np.linspace(0,np.pi,20))**2).sum()
+            tmp_matrix = np.multiply.outer(intensity_matrix, beta_distribution)
+
+        return intensity_matrix, tmp_matrix
 
 
     def calc_module_ground_matrix(self):
@@ -412,8 +473,11 @@ class ModuleIllumination:
         lower_index_back = np.round(low_view/self.x_g_distance).astype(int)
         upper_index_back = np.round(high_view_back/self.x_g_distance).astype(int)
 
-        intensity_matrix_front = self.module_ground_matrix_helper(lower_index_front, upper_index_front)
-        intensity_matrix_back = self.module_ground_matrix_helper(lower_index_back, upper_index_back)
+        intensity_matrix_front, tmp_matrix_front = self.module_ground_matrix_helper(lower_index_front, upper_index_front)
+        intensity_matrix_back, tmp_matrix_back = self.module_ground_matrix_helper(lower_index_back, upper_index_back)
+
+        self.tmp['front_matrix'] = tmp_matrix_front
+        self.tmp['back_matrix'] = tmp_matrix_back
 
         self.results['module_front_ground_matrix'] = intensity_matrix_front
         self.results['module_back_ground_matrix'] = intensity_matrix_back
