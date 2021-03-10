@@ -140,7 +140,7 @@ class CostOptimizer(YieldSimulator):
         module_agg_func="min",
         bifacial=True,
         module_length=1.96,
-        invest_kwp=1500,
+        invest_kwp=1000,
         tmy_data=True,
         price_per_m2_land=5,
         **kwargs
@@ -225,7 +225,7 @@ class CostOptimizer(YieldSimulator):
         n_points = 40
         rvs_transformed = space.transform(space.rvs(n_samples=n_samples))
 
-        fig, ax = plt.subplots(dpi=100)
+        fig, ax = plt.subplots(dpi=200, figsize=(4,3))
 
         xi, yi, zi = self.opt_lib.plots.partial_dependence(
             space, self.res.models[-1], 1, 0, rvs_transformed, n_points
@@ -239,15 +239,15 @@ class CostOptimizer(YieldSimulator):
 
         ax.tick_params(axis="x", direction="in")
         ax.xaxis.set_label_position("bottom")
-        ax.set_xlabel("module spacing (m)")
-        ax.set_ylabel(r"module tilt (deg)")
+        ax.set_xlabel("Module Spacing (m)")
+        ax.set_ylabel(r"Module Tilt (deg)")
 
         ticks = list(np.linspace(level_min, level_max, 6).astype(np.float32))
 
         cbar_ax = fig.add_axes([0.2, 0.1, 0.6, 0.04])
         cbar = fig.colorbar(
             cs,
-            label=r"\textbf{LCOE} (0.01 \$/kWh)",
+            label=r"LCOE (0.01 \$/kWh)",
             cax=cbar_ax,
             ticks=ticks,
             orientation="horizontal",
