@@ -55,29 +55,48 @@ class YieldSimulator:
         self.input_parameter["module_spacing"] = spacing
 
         self.simulation = geo.ModuleIllumination(**self.input_parameter)
-
-        diffuse = np.concatenate(
-            [
-                self.simulation.results["irradiance_module_front_ground_diffuse"],
-                self.simulation.results["irradiance_module_front_sky_diffuse"],
-                self.simulation.results["irradiance_module_back_sky_diffuse"],
-                self.simulation.results["irradiance_module_back_ground_diffuse"],
-            ]
-        )
+        
+        try:
+            diffuse = np.concatenate(
+                [
+                    self.simulation.results["irradiance_module_front_sky_diffuse"],
+                    self.simulation.results["irradiance_module_back_sky_diffuse"],
+                    self.simulation.results["irradiance_module_front_ground_diffuse"],
+                    self.simulation.results["irradiance_module_back_ground_diffuse"],
+                ],
+            )
+            diffuse = np.outer(self.dhi, diffuse/self.dhi.sum())
+            
+        except:
+            diffuse = np.concatenate(
+                [
+                    self.simulation.results["irradiance_module_front_sky_diffuse"],
+                    self.simulation.results["irradiance_module_back_sky_diffuse"],
+                ],
+            )
+            diffuse = np.tile(diffuse, (len(self.dhi),1))
+            diffuse = np.concatenate(
+                [
+                    self.simulation.results["irradiance_module_front_ground_diffuse"],
+                    self.simulation.results["irradiance_module_back_ground_diffuse"],
+                    diffuse
+                ],
+                axis=1
+            )*(self.dhi/self.dhi.sum()).values[:,None]
+            
         direct = np.concatenate(
-            [
-                self.simulation.results["irradiance_module_front_ground_direct"],
+            [                
                 self.simulation.results["irradiance_module_front_sky_direct"],
                 self.simulation.results["irradiance_module_back_sky_direct"],
+                self.simulation.results["irradiance_module_front_ground_direct"],
                 self.simulation.results["irradiance_module_back_ground_direct"],
             ],
             axis=1,
         )
 
-        diffuse_ts = np.outer(self.dhi, diffuse/self.dhi.sum())
-        direct_ts = direct#self.dni[:, None] * direct
+        #direct_ts = direct#self.dni[:, None] * direct
 
-        column_names = ["front_ground", "front_sky", "back_sky", "back_ground"]
+        column_names = ["front_sky", "back_sky","front_ground", "back_ground"]
         prefixes = ["_diffuse", "_direct"]
         column_names = [name + prefix for prefix in prefixes for name in column_names]
 
@@ -87,10 +106,18 @@ class YieldSimulator:
         )
 
         results = pd.DataFrame(
-            np.concatenate([diffuse_ts, direct_ts], axis=1),
+            np.concatenate([diffuse, direct], axis=1),
             columns=multi_index,
             index=self.dni.index,
         )
+        
+# =============================================================================
+#         if any(self.input_parameter["zenith_sun"]<25):
+#             import ipdb
+#             ipdb.set_trace()
+#             pass
+# =============================================================================
+        
         return results
 
     def calculate_yield(self, spacing, tilt):
@@ -136,7 +163,7 @@ class YieldSimulator:
 class CostOptimizer(YieldSimulator):
     def __init__(
         self,
-        illumination,
+        illumination_df,
         module_agg_func="min",
         bifacial=True,
         module_length=1.96,
@@ -160,7 +187,7 @@ class CostOptimizer(YieldSimulator):
         self.res = None
 
         super().__init__(
-            illumination,
+            illumination_df,
             module_agg_func=module_agg_func,
             bifacial=bifacial,
             module_length=module_length,
