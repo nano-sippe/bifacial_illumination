@@ -256,10 +256,10 @@ def process_sky_diffuse(geo_instance, theta_bins='iso'):
     return {'front': binned_front,
             'back': binned_back}
 
-def calc_front_back(geo_sinatcen, df_res, theta_bins='iso'):
-    sky_diffuse = process_sky_diffuse(simulator.simulation, theta_bins=theta_bins)
-    sky_direct = process_sky_direct(df_res, simulator.simulation, theta_bins=theta_bins)
-    ground = sum_binned_ground_data(simulator.simulation, theta_bins=theta_bins)
+def calc_front_back(simulation, df_res, theta_bins='iso'):
+    sky_diffuse = process_sky_diffuse(simulation, theta_bins=theta_bins)
+    sky_direct = process_sky_direct(df_res, simulation, theta_bins=theta_bins)
+    ground = sum_binned_ground_data(simulation, theta_bins=theta_bins)
 
     front = sky_diffuse['front'] + sky_direct['front'] + ground['front']
     back = sky_diffuse['back'] + sky_direct['back'] + ground['back']
@@ -273,7 +273,7 @@ if __name__ == '__main__':
                                       file_format='copernicus',
                                       tmy=False)
 
-    simulator = bi.YieldSimulator(berlin_illumination,
+    simulator = bi.YieldSimulator(berlin_illumination.df,
                                   tmy_data=False, module_height=0.5)
     #spacing is specified in m, tilt in deg
     yearly_yield = simulator.calculate_yield(spacing=6, tilt=35)
