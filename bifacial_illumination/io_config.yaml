@@ -1,0 +1,6 @@
+-  wekeo:
+    secret: your wekeo secret
+    key: your wekeo secret
+-  nsrdb:
+    name: Tabitha Bitumen
+    job: Developer
