@@ -36,7 +36,6 @@ class ModuleIllumination:
         dhi=1,
         zenith_sun=30,
         azimuth_sun=150,
-        albedo=0.3,
         ground_steps=101,
         module_steps=12,
         angle_steps=180,
@@ -75,9 +74,6 @@ class ModuleIllumination:
         azimuth_sun : numeric or array-like
             Azimuth angle of the sun in degrees. 180 degrees defined as south.
 
-        albedo : numeric
-            Albedo of the ground. Should have value between 0 and 1.
-
         ground_steps : int
             Resolution on the ground where the irradiance is evaluated
 
@@ -105,7 +101,6 @@ class ModuleIllumination:
             zenith_sun[zenith_sun > 90] = 90
         self.theta_S_rad = np.deg2rad(zenith_sun)
         self.phi_S_rad = np.deg2rad(azimuth_sun)
-        self.albedo = albedo
         self.ground_steps = ground_steps
         self.module_steps = module_steps
         self.angle_steps = angle_steps
@@ -210,12 +205,12 @@ class ModuleIllumination:
         )
 
         try:
-            temp_irrad[:] = (self.DNI * self.cos_alpha_mS).values[:, None]
+            temp_irrad[:] = self.cos_alpha_mS[:, None]
             temp_irrad[np.greater.outer(l_shadow, self.l_array)] = 0
             temp_front = np.where((self.cos_alpha_mS > 0)[:, None], temp_irrad, 0)
             temp_back = np.where((self.cos_alpha_mS < 0)[:, None], -temp_irrad, 0)
         except:
-            temp_irrad[:] = self.DNI * self.cos_alpha_mS
+            temp_irrad[:] = self.cos_alpha_mS
             temp_irrad[np.greater.outer(l_shadow, self.l_array)] = 0
             temp_front = np.where((self.cos_alpha_mS > 0), temp_irrad, 0)
             temp_back = np.where((self.cos_alpha_mS < 0), -temp_irrad, 0)
@@ -254,7 +249,7 @@ class ModuleIllumination:
         np.trapz(dist_alpha, np.tile(spacing_alpha, (self.module_steps, 1)), axis=1) / 2
 
         sin_alpha_2 = (1 - cos_alpha_2 ** 2) ** 0.5
-        irradiance_front = (sin_alpha_2 + 1) / 2.0 * self.DHI
+        irradiance_front = (sin_alpha_2 + 1) / 2.0
 
         vectors_back = np.multiply.outer(self.L - self.l_array, self.e_m) + np.array(
             [self.dist, 0]
@@ -264,7 +259,7 @@ class ModuleIllumination:
         self.tmp["epsilon_1_back"] = np.pi / 2 - np.arccos(cos_epsilon_1)
 
         sin_epsilon_2 = (1 - cos_epsilon_1 ** 2) ** 0.5
-        irradiance_back = (1 - sin_epsilon_2) / 2 * self.DHI
+        irradiance_back = (1 - sin_epsilon_2) / 2
 
         self.results["irradiance_module_front_sky_diffuse"] = irradiance_front
         self.results[
@@ -337,23 +332,16 @@ class ModuleIllumination:
                 illum_array_1,
                 illum_array_2,
             )
-            illum_array_temp = (illum_array_temp * self.DNI.values[:, None]) * np.cos(
+            illum_array_temp = illum_array_temp * np.cos(
                 self.theta_S_rad
             ).values[:, None]
         except:
             illum_array_temp = np.where(
                 (shadow_end_uc >= shadow_start_uc), illum_array_1, illum_array_2
             )
-            illum_array_temp = (illum_array_temp * self.DNI) * np.cos(self.theta_S_rad)
-
-        try:
-            self.results["radiance_ground_direct_emitted"] = (
-                illum_array_temp / np.pi * self.albedo
-            )
-        except:
-            self.results["radiance_ground_direct_emitted"] = (
-                illum_array_temp / np.pi * self.albedo[:, None]
-            )
+            illum_array_temp = illum_array_temp * np.cos(self.theta_S_rad)
+            
+        self.results["radiance_ground_direct_emitted"] = illum_array_temp / np.pi
 
     def calc_sin_B_i(self, i, x_g):
         """
@@ -444,12 +432,10 @@ class ModuleIllumination:
         # sum over all "windows" between module rows
         illum_array = sky_view_factors.sum(axis=0) / 2
 
-        irradiance_ground_diffuse_received = illum_array * self.DHI
+        irradiance_ground_diffuse_received = illum_array
 
         # division by pi converts irradiance into radiance assuming Lambertian scattering
-        self.results["radiance_ground_diffuse_emitted"] = np.multiply.outer(
-            irradiance_ground_diffuse_received / np.pi, self.albedo
-        )
+        self.results["radiance_ground_diffuse_emitted"] = irradiance_ground_diffuse_received / np.pi
 
     def module_ground_matrix_helper(self, lower_index, upper_index):
         """
@@ -517,25 +503,7 @@ class ModuleIllumination:
 
                 ipdb.set_trace()
 
-        # tmp stuff
-        if True:
-            # =============================================================================
-            #             matrix = simulator.simulation.results['module_back_ground_matrix']
-            #
-            #             mindex = pd.MultiIndex.from_product([range(self.module_steps)
-            #             , range(self.angle_steps), range(self.ground_steps)],
-            #                                        names=['module_position', 'alpha', 'ground_position'])
-            #
-            #             df = pd.Series(matrix.flatten(), index = mindex)
-            #             sns.heatmap(df.loc[0].unstack('alpha'))
-            # =============================================================================
-            beta_distribution = (
-                np.sin(np.linspace(0, np.pi, 20)) ** 2
-                / (np.sin(np.linspace(0, np.pi, 20)) ** 2).sum()
-            )
-            tmp_matrix = np.multiply.outer(intensity_matrix, beta_distribution)
-
-        return intensity_matrix, tmp_matrix
+        return intensity_matrix
 
     def calc_module_ground_matrix(self):
         """
@@ -573,15 +541,12 @@ class ModuleIllumination:
         lower_index_back = np.round(low_view / self.x_g_distance).astype(int)
         upper_index_back = np.round(high_view_back / self.x_g_distance).astype(int)
 
-        intensity_matrix_front, tmp_matrix_front = self.module_ground_matrix_helper(
+        intensity_matrix_front = self.module_ground_matrix_helper(
             lower_index_front, upper_index_front
         )
-        intensity_matrix_back, tmp_matrix_back = self.module_ground_matrix_helper(
+        intensity_matrix_back = self.module_ground_matrix_helper(
             lower_index_back, upper_index_back
         )
-
-        self.tmp["front_matrix"] = tmp_matrix_front
-        self.tmp["back_matrix"] = tmp_matrix_back
 
         self.results["module_front_ground_matrix"] = intensity_matrix_front
         self.results["module_back_ground_matrix"] = intensity_matrix_back

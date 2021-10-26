@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import time
 import pandas as pd
 import datetime
-import pysolar.solar as sol
 import pickle
 import seaborn as sns
 import io_

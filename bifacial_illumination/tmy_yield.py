@@ -37,15 +37,16 @@ class YieldSimulator:
 
         self.dni = illumination_df.loc[:, "DNI"]
         self.dhi = illumination_df.loc[:, "DHI"]
+        self.albedo = albedo
 
         self.input_parameter = dict(
-            module_length=module_length, mount_height=module_height, albedo=albedo
+            module_length=module_length, mount_height=module_height
         )
         self.input_parameter.update(kw_parameter)
         self.input_parameter["zenith_sun"] = illumination_df.zenith
         self.input_parameter["azimuth_sun"] = illumination_df.azimuth
         self.input_parameter['dni'] = self.dni
-        self.input_parameter['dhi'] = self.dhi.sum()
+        self.input_parameter['dhi'] = self.dhi
 
     def simulate(self, spacing, tilt):
         """
@@ -65,7 +66,7 @@ class YieldSimulator:
                     self.simulation.results["irradiance_module_back_ground_diffuse"],
                 ],
             )
-            diffuse = np.outer(self.dhi, diffuse/self.dhi.sum())
+            diffuse = np.outer(self.dhi, diffuse)
             
         except:
             diffuse = np.concatenate(
@@ -82,7 +83,7 @@ class YieldSimulator:
                     diffuse
                 ],
                 axis=1
-            )*(self.dhi/self.dhi.sum()).values[:,None]
+            )*(self.dhi).values[:,None]
             
         direct = np.concatenate(
             [                
@@ -92,7 +93,7 @@ class YieldSimulator:
                 self.simulation.results["irradiance_module_back_ground_direct"],
             ],
             axis=1,
-        )
+        ) * self.dni.values[:,None]
 
         #direct_ts = direct#self.dni[:, None] * direct
 
@@ -111,12 +112,9 @@ class YieldSimulator:
             index=self.dni.index,
         )
         
-# =============================================================================
-#         if any(self.input_parameter["zenith_sun"]<25):
-#             import ipdb
-#             ipdb.set_trace()
-#             pass
-# =============================================================================
+        ground_reflected = results.columns.get_level_values(0).str.contains('ground')
+        
+        results.loc[:,ground_reflected] = results.loc[:,ground_reflected].apply(lambda x: x*self.albedo, raw=True, axis=0)
         
         return results
 
@@ -252,7 +250,7 @@ class CostOptimizer(YieldSimulator):
         n_points = 40
         rvs_transformed = space.transform(space.rvs(n_samples=n_samples))
 
-        fig, ax = plt.subplots(dpi=200, figsize=(4,3))
+        fig, ax = plt.subplots(dpi=100)
 
         xi, yi, zi = self.opt_lib.plots.partial_dependence(
             space, self.res.models[-1], 1, 0, rvs_transformed, n_points
@@ -266,15 +264,15 @@ class CostOptimizer(YieldSimulator):
 
         ax.tick_params(axis="x", direction="in")
         ax.xaxis.set_label_position("bottom")
-        ax.set_xlabel("Module Spacing (m)")
-        ax.set_ylabel(r"Module Tilt (deg)")
+        ax.set_xlabel("module spacing (m)")
+        ax.set_ylabel(r"module tilt (deg)")
 
         ticks = list(np.linspace(level_min, level_max, 6).astype(np.float32))
 
         cbar_ax = fig.add_axes([0.2, 0.1, 0.6, 0.04])
         cbar = fig.colorbar(
             cs,
-            label=r"LCOE (0.01 \$/kWh)",
+            label=r"\textbf{LCOE} (0.01 \$/kWh)",
             cax=cbar_ax,
             ticks=ticks,
             orientation="horizontal",
