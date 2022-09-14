@@ -32,8 +32,7 @@ class ModuleIllumination:
         module_tilt=52,
         mount_height=0.5,
         module_spacing=7.1,
-        dni=1,
-        dhi=1,
+
         zenith_sun=30,
         azimuth_sun=150,
         ground_steps=101,
@@ -62,12 +61,6 @@ class ModuleIllumination:
             Distance between modules. Defined as distance between lowest point
             of one module to the same point on the next row.
 
-        dni : numeric
-            Direct normal irradiance
-
-        dhi : numeric
-            Diffuse horizontal irradiance
-
         zenith_sun : numeric or array-like
             Zenith angle of the sun in degrees
 
@@ -91,9 +84,7 @@ class ModuleIllumination:
         self.theta_m_rad = np.deg2rad(module_tilt)
         self.H = mount_height
         self.dist = module_spacing
-        self.DNI = dni
-        self.DHI = dhi
-
+ 
         if np.any(zenith_sun > 90):
             warnings.warn(
                 "Zenith angle larger then 90 deg was passed to simulation. Zenith angle is truncted to 90."
