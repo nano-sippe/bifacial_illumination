@@ -27,7 +27,7 @@ class YieldSimulator:
         self.back_eff = back_eff
         self.module_agg_func = module_agg_func
 
-        self.simulation = None
+        self.geo_instance = None
 
         # whether the underlying data is representing a tmy
         self.tmy_data = tmy_data
@@ -45,8 +45,8 @@ class YieldSimulator:
         self.input_parameter.update(kw_parameter)
         self.input_parameter["zenith_sun"] = illumination_df.zenith
         self.input_parameter["azimuth_sun"] = illumination_df.azimuth
-        self.input_parameter['dni'] = self.dni
-        self.input_parameter['dhi'] = self.dhi
+        #self.input_parameter['dni'] = self.dni
+        #self.input_parameter['dhi'] = self.dhi
 
     def simulate(self, spacing, tilt):
         """
@@ -55,15 +55,15 @@ class YieldSimulator:
         self.input_parameter["module_tilt"] = tilt
         self.input_parameter["module_spacing"] = spacing
 
-        self.simulation = geo.ModuleIllumination(**self.input_parameter)
+        self.geo_instance = geo.ModuleIllumination(**self.input_parameter)
         
         try:
             diffuse = np.concatenate(
                 [
-                    self.simulation.results["irradiance_module_front_sky_diffuse"],
-                    self.simulation.results["irradiance_module_back_sky_diffuse"],
-                    self.simulation.results["irradiance_module_front_ground_diffuse"],
-                    self.simulation.results["irradiance_module_back_ground_diffuse"],
+                    self.geo_instance.results["irradiance_module_front_sky_diffuse"],
+                    self.geo_instance.results["irradiance_module_back_sky_diffuse"],
+                    self.geo_instance.results["irradiance_module_front_ground_diffuse"],
+                    self.geo_instance.results["irradiance_module_back_ground_diffuse"],
                 ],
             )
             diffuse = np.outer(self.dhi, diffuse)
@@ -71,15 +71,15 @@ class YieldSimulator:
         except:
             diffuse = np.concatenate(
                 [
-                    self.simulation.results["irradiance_module_front_sky_diffuse"],
-                    self.simulation.results["irradiance_module_back_sky_diffuse"],
+                    self.geo_instance.results["irradiance_module_front_sky_diffuse"],
+                    self.geo_instance.results["irradiance_module_back_sky_diffuse"],
                 ],
             )
             diffuse = np.tile(diffuse, (len(self.dhi),1))
             diffuse = np.concatenate(
                 [
-                    self.simulation.results["irradiance_module_front_ground_diffuse"],
-                    self.simulation.results["irradiance_module_back_ground_diffuse"],
+                    self.geo_instance.results["irradiance_module_front_ground_diffuse"],
+                    self.geo_instance.results["irradiance_module_back_ground_diffuse"],
                     diffuse
                 ],
                 axis=1
@@ -87,10 +87,10 @@ class YieldSimulator:
             
         direct = np.concatenate(
             [                
-                self.simulation.results["irradiance_module_front_sky_direct"],
-                self.simulation.results["irradiance_module_back_sky_direct"],
-                self.simulation.results["irradiance_module_front_ground_direct"],
-                self.simulation.results["irradiance_module_back_ground_direct"],
+                self.geo_instance.results["irradiance_module_front_sky_direct"],
+                self.geo_instance.results["irradiance_module_back_sky_direct"],
+                self.geo_instance.results["irradiance_module_front_ground_direct"],
+                self.geo_instance.results["irradiance_module_back_ground_direct"],
             ],
             axis=1,
         ) * self.dni.values[:,None]
@@ -103,7 +103,7 @@ class YieldSimulator:
 
         level_names = ["contribution", "module_position"]
         multi_index = pd.MultiIndex.from_product(
-            [column_names, range(self.simulation.module_steps)], names=level_names
+            [column_names, range(self.geo_instance.module_steps)], names=level_names
         )
 
         results = pd.DataFrame(
