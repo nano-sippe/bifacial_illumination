@@ -225,11 +225,26 @@ class ModuleIllumination:
             [self.dist, 0]
         )
 
+        vectors_front_normalized =  vectors_front / np.linalg.norm(vectors_front, axis=1)[:,None]
+        
         cos_alpha_2 = np.dot(vectors_front, self.n_m) / np.linalg.norm(
             vectors_front, axis=1
         )
+        
+        
+# =============================================================================
+#         self.tmp["alpha_2_front"] = np.arccos(cos_alpha_2)
+# =============================================================================
+        
+        alpha_2_front = np.arctan2(np.cross(self.n_m, vectors_front_normalized),
+                          np.dot(vectors_front_normalized, self.n_m))
 
-        self.tmp["alpha_2_front"] = np.arccos(cos_alpha_2)
+        self.tmp["alpha_2_front"] = alpha_2_front
+        
+        #np.arctan2(np.cross(vectors_front_normalized, self.n_m),
+        #                  np.dot(vectors_front_normalized, self.n_m))
+        
+        
         spacing_alpha = np.linspace(-np.pi / 2, np.pi / 2, 1200)
         dist_alpha = np.cos(spacing_alpha)
 
@@ -239,8 +254,9 @@ class ModuleIllumination:
 
         np.trapz(dist_alpha, np.tile(spacing_alpha, (self.module_steps, 1)), axis=1) / 2
 
-        sin_alpha_2 = (1 - cos_alpha_2 ** 2) ** 0.5
-        irradiance_front = (sin_alpha_2 + 1) / 2.0
+        #sin_alpha_2 = (1 - cos_alpha_2 ** 2) ** 0.5
+        
+        irradiance_front = (np.sin(alpha_2_front) + 1) / 2.0
 
         vectors_back = np.multiply.outer(self.L - self.l_array, self.e_m) + np.array(
             [self.dist, 0]
